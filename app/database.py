@@ -42,6 +42,26 @@ CREATE TABLE IF NOT EXISTS problem_analyses (
     analyzed_at TEXT NOT NULL,
     FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS problem_clusters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    representative_problem_id INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    FOREIGN KEY(representative_problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_problem_clusters_representative
+    ON problem_clusters(representative_problem_id);
+
+CREATE TABLE IF NOT EXISTS problem_cluster_members (
+    cluster_id INTEGER NOT NULL,
+    problem_id INTEGER NOT NULL,
+    similarity REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY(cluster_id, problem_id),
+    FOREIGN KEY(cluster_id) REFERENCES problem_clusters(id) ON DELETE CASCADE,
+    FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_cluster_members_problem
+    ON problem_cluster_members(problem_id);
 """
 
 
