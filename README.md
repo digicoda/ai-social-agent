@@ -39,6 +39,19 @@ Phase 1's exact fingerprint remains the database safety net. Phase 2 adds determ
 
 Phase 2 also groups related problems into SQLite-backed clusters. Clustering is deterministic and local, so it does not require embeddings or an additional AI request. The highest-scoring problem becomes the cluster representative, and related problems are assigned to it using a similarity threshold.
 
+## Phase 3 — Content Generation & Approval
+
+Phase 3 turns eligible analyzed problems into reviewable content drafts. Gemini generates a platform-neutral educational draft with a title, body, hashtags, call-to-action, and generation confidence. Discarded problems are never generated, and existing non-rejected drafts are not duplicated on repeat runs.
+
+Drafts are stored in SQLite with an explicit lifecycle:
+
+```text
+pending_approval -> approved
+                  -> rejected
+```
+
+Rejections require a reason so a future regeneration/editing workflow can use that feedback. Publishing is still intentionally disabled in Phase 3: an approved draft is only an approved artifact and is not sent to any social network.
+
 ### Run locally
 
 ```bash
@@ -48,6 +61,10 @@ pip install -r requirements.txt
 cp .env.example .env
 python -m app.cli research
 python -m app.cli analyze --limit 25
+python -m app.cli generate --limit 10
+python -m app.cli queue --limit 25
+python -m app.cli approve --draft-id 1
+python -m app.cli reject --draft-id 2 --reason "Needs a clearer example"
 ```
 
 ### API
@@ -59,8 +76,9 @@ uvicorn app.main:app --reload
 - `GET /health`
 - `POST /research/run`
 - `POST /analysis/run?limit=25`
-
-Publishing is intentionally not included in Phase 2 yet. Analysis produces candidates and approval decisions for the publishing phase.
+- `POST /content/generate?limit=10`
+- `GET /approval/queue?status=pending_approval&limit=25`
+- `POST /approval/{draft_id}` with `{"action":"approved"}` or `{"action":"rejected","reason":"..."}`
 
 ## Architecture
 
