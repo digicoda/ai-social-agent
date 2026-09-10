@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     linkedin_access_token: str = ""
     linkedin_author_urn: str = ""
     linkedin_api_version: str = "202603"
+    retry_base_seconds: int = 60
+    retry_max_seconds: int = 3600
+    worker_batch_size: int = 10
 
     @property
     def rss_feed_list(self) -> list[str]:
