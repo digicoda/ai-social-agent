@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from .config import Settings
@@ -21,7 +22,17 @@ def run_due_schedules(settings: Settings, limit: int = 10) -> dict[str, int]:
             continue
         processed += 1
         try:
-            publish_draft(settings, int(schedule["draft_id"]), str(schedule["provider"]))
+            media_type = str(schedule["media_type"] or "none")
+            media_paths = json.loads(schedule["media_paths"] or "[]")
+            if not isinstance(media_paths, list) or any(not isinstance(path, str) for path in media_paths):
+                raise PublishingError("scheduled media_paths is invalid", retryable=False)
+            publish_draft(
+                settings,
+                int(schedule["draft_id"]),
+                str(schedule["provider"]),
+                media_paths=media_paths or None,
+                media_type="image" if media_type == "none" else media_type,
+            )
             complete_schedule(settings.database_url, schedule_id)
             published += 1
         except PublishingError as exc:
