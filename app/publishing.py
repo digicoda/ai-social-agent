@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import httpx
 
 from .config import Settings
-from .linkedin_media import LinkedInMediaClient
 
 
 class PublishingError(RuntimeError):
@@ -49,6 +48,7 @@ class LinkedInPublisher(Publisher):
         if media_paths:
             if len(media_paths) > 1:
                 raise PublishingError("Phase 6C supports one LinkedIn image per post", retryable=False)
+            from .linkedin_media import LinkedInMediaClient
             media = LinkedInMediaClient(self.token, self.author, self.version, self.timeout)
             image_urn = media.upload_image(media_paths[0])
             content = {"media": {"id": image_urn, "title": title.strip()}}
@@ -63,12 +63,7 @@ class LinkedInPublisher(Publisher):
             **content,
         }
         try:
-            response = httpx.post(
-                self.endpoint,
-                headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"},
-                json=payload,
-                timeout=self.timeout,
-            )
+            response = httpx.post(self.endpoint, headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}, json=payload, timeout=self.timeout)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
