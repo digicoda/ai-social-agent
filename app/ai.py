@@ -22,7 +22,7 @@ class GeminiError(RuntimeError):
 
 
 class GeminiClient:
-    """Small REST client for Gemini; the API key stays in process memory only."""
+    """Small REST client for Gemini; the API key is read from environment settings."""
 
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash", timeout: float = 30.0) -> None:
         if not api_key:
@@ -48,7 +48,7 @@ URL: {problem.url}
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         response = httpx.post(
             url,
-            params={"key": self.api_key},
+            headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
@@ -63,12 +63,15 @@ URL: {problem.url}
         try:
             text = payload["candidates"][0]["content"]["parts"][0]["text"]
             data = json.loads(text)
+            hooks = [str(item).strip() for item in data["hooks"]]
+            if len(hooks) < 3:
+                raise ValueError("Gemini returned fewer than 3 hooks")
             return ProblemAnalysis(
                 pain_point=str(data["pain_point"]).strip(),
                 audience=str(data["audience"]).strip(),
                 root_cause=str(data["root_cause"]).strip(),
                 solution_angle=str(data["solution_angle"]).strip(),
-                hooks=[str(item).strip() for item in data["hooks"]][:3],
+                hooks=hooks[:3],
                 risks=[str(item).strip() for item in data.get("risks", [])],
                 confidence=max(0, min(100, int(data["confidence"]))),
             )
