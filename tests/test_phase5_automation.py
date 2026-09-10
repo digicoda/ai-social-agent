@@ -8,6 +8,7 @@ from app.publishing import PublishResult, Publisher
 from app.scheduler import run_due_schedules
 from app.scheduling import schedule_draft
 import app.publish_service as publish_service
+import app.scheduling as scheduling
 
 
 class FakePublisher(Publisher):
@@ -28,9 +29,10 @@ def _approved_draft(settings):
     return draft_id
 
 
-def test_schedule_requires_future_time(tmp_path):
+def test_schedule_requires_future_time(tmp_path, monkeypatch):
     settings = Settings(database_url=f"sqlite:///{tmp_path / 'db.sqlite'}")
     draft_id = _approved_draft(settings)
+    monkeypatch.setattr(scheduling, "get_publisher", lambda settings, name: FakePublisher())
     try:
         schedule_draft(settings, draft_id, "fake", "2020-01-01T00:00:00+00:00")
     except ValueError as exc:
@@ -42,8 +44,9 @@ def test_schedule_requires_future_time(tmp_path):
 def test_worker_publishes_due_schedule_and_is_idempotent(tmp_path, monkeypatch):
     settings = Settings(database_url=f"sqlite:///{tmp_path / 'db.sqlite'}")
     draft_id = _approved_draft(settings)
+    monkeypatch.setattr(scheduling, "get_publisher", lambda settings, name: FakePublisher())
     monkeypatch.setattr(publish_service, "get_publisher", lambda settings, name: FakePublisher())
-    schedule_id = schedule_draft(settings, draft_id, "fake", (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat())['schedule_id']
+    schedule_id = schedule_draft(settings, draft_id, "fake", (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat())["schedule_id"]
 
     connection = connect(settings.database_url)
     connection.execute("UPDATE publish_schedules SET scheduled_for = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), schedule_id))
@@ -52,7 +55,9 @@ def test_worker_publishes_due_schedule_and_is_idempotent(tmp_path, monkeypatch):
 
     result = run_due_schedules(settings, limit=10)
     assert result["published"] == 1
-    assert connect(settings.database_url).execute("SELECT status FROM publish_schedules WHERE id = ?", (schedule_id,)).fetchone()[0] == "published"
+    connection = connect(settings.database_url)
+    assert connection.execute("SELECT status FROM publish_schedules WHERE id = ?", (schedule_id,)).fetchone()[0] == "published"
+    connection.close()
 
     result = publish_draft(settings, draft_id, "fake")
     assert result["idempotent"] is True
