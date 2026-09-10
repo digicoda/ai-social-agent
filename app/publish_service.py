@@ -6,7 +6,13 @@ from .publish_lock import claim_draft_for_publish, mark_draft_published_from_cla
 from .publishing import PublishingError, get_publisher
 
 
-def publish_draft(settings: Settings, draft_id: int, provider_name: str, media_paths: list[str] | None = None) -> dict:
+def publish_draft(
+    settings: Settings,
+    draft_id: int,
+    provider_name: str,
+    media_paths: list[str] | None = None,
+    media_type: str = "none",
+) -> dict:
     connection = connect(settings.database_url)
     try:
         row = connection.execute("SELECT id, title, body, hashtags, status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
@@ -29,7 +35,11 @@ def publish_draft(settings: Settings, draft_id: int, provider_name: str, media_p
             raise PublishingError("draft publishing claim was lost", retryable=True)
         try:
             publisher = get_publisher(settings, provider_name)
-            result = publisher.publish(row["title"], row["body"], json.loads(row["hashtags"]), media_paths=media_paths)
+            publish_args = (row["title"], row["body"], json.loads(row["hashtags"]))
+            if media_paths or media_type != "none":
+                result = publisher.publish(*publish_args, media_paths=media_paths, media_type=media_type)
+            else:
+                result = publisher.publish(*publish_args)
         except PublishingError as exc:
             save_publishing_attempt(connection, draft_id, provider_name, "failed", error=str(exc))
             raise
