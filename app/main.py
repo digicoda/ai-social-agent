@@ -12,7 +12,7 @@ from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
-app = FastAPI(title="AI Social Agent", version="0.8.0")
+app = FastAPI(title="AI Social Agent", version="0.9.0")
 
 class ApprovalRequest(BaseModel):
     action: str = Field(pattern="^(approved|rejected)$")
@@ -26,6 +26,10 @@ class ScheduleRequest(BaseModel):
 class MediaPublishRequest(BaseModel):
     provider: str = "linkedin"
     image_path: str = Field(min_length=1)
+
+class MultiImagePublishRequest(BaseModel):
+    provider: str = "linkedin"
+    image_paths: list[str] = Field(min_length=2, max_length=20)
 
 class DocumentPublishRequest(BaseModel):
     provider: str = "linkedin"
@@ -101,6 +105,14 @@ def publish_image(draft_id: int, request: MediaPublishRequest, x_api_key: str | 
     _authorize(x_api_key)
     try:
         return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.image_path], media_type="image")
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@app.post("/publish/{draft_id}/multi-image")
+def publish_multi_image(draft_id: int, request: MultiImagePublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    try:
+        return publish_draft(get_settings(), draft_id, request.provider, media_paths=request.image_paths, media_type="multi_image")
     except PublishingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
