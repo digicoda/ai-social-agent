@@ -1,6 +1,5 @@
 import re
 import sqlite3
-from collections import Counter
 
 from .schemas import Problem
 
@@ -12,9 +11,26 @@ _STOPWORDS = {
 }
 
 
+def _normalize_token(word: str) -> str:
+    word = word.strip("._-")
+    if len(word) > 5 and word.endswith("ing"):
+        word = word[:-3]
+    elif len(word) > 4 and word.endswith("ed"):
+        word = word[:-2]
+    elif len(word) > 4 and word.endswith("s"):
+        word = word[:-1]
+    return word
+
+
 def _tokens(text: str) -> set[str]:
     words = re.findall(r"[a-z0-9][a-z0-9_+#.-]{1,}", text.lower())
-    return {word.strip("._-") for word in words if word not in _STOPWORDS and len(word) > 2}
+    return {
+        token
+        for word in words
+        if word not in _STOPWORDS
+        for token in [_normalize_token(word)]
+        if len(token) > 2
+    }
 
 
 def similarity(left: Problem, right: Problem) -> float:
@@ -32,7 +48,6 @@ def similarity(left: Problem, right: Problem) -> float:
     else:
         body_jaccard = 0.0
 
-    # Titles are the strongest signal for short technical questions.
     return round((title_jaccard * 0.75) + (body_jaccard * 0.25), 4)
 
 
@@ -67,7 +82,6 @@ def find_cross_source_duplicate(
             url=row["url"],
             summary=row["summary"],
             body=row["body"],
-            tags=[],
             score=int(row["score"]),
             comments=int(row["comments"]),
         )
