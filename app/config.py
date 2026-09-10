@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     publishing_timeout_seconds: float = 20.0
     linkedin_access_token: str = ""
     linkedin_author_urn: str = ""
-    linkedin_api_version: str = "202603"
+    linkedin_api_version: str = "202608"
     retry_base_seconds: int = 60
     retry_max_seconds: int = 3600
     worker_batch_size: int = 10
