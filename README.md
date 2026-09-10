@@ -75,6 +75,7 @@ LINKEDIN_MEDIA_POLL_SECONDS=1
 RETRY_BASE_SECONDS=60
 RETRY_MAX_SECONDS=3600
 WORKER_BATCH_SIZE=10
+WORKER_POLL_SECONDS=60
 ```
 
 Never commit real credentials.
@@ -95,10 +96,55 @@ python -m app.cli approve --draft-id 1
 python -m app.cli publish --draft-id 1 --provider linkedin
 ```
 
+## Production deployment
+
+Phase 6I adds a production container and a two-service Compose deployment: one API container and one continuous scheduling worker. The worker polls due schedules and shares the same persistent SQLite and media volumes as the API. Compose named volumes are used so database/media data survive container recreation. citeturn0search2
+
+Build and start:
+
+```bash
+cp .env.example .env
+# Set APP_ENV=production, INTERNAL_API_KEY, GEMINI_API_KEY,
+# LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN in .env.
+docker compose build
+docker compose up -d
+```
+
+Check service state and logs:
+
+```bash
+docker compose ps
+docker compose logs -f api
+docker compose logs -f worker
+```
+
+The API container exposes port `8000` and has a Docker healthcheck against `/health`. Docker healthchecks provide an explicit container health state independent of the application process state. citeturn0search3
+
+The worker uses:
+
+```bash
+python -m app.cli worker --loop
+```
+
+and defaults to polling every 60 seconds through `WORKER_POLL_SECONDS`. It handles SIGTERM/SIGINT for graceful shutdown and keeps polling after an isolated worker-cycle exception.
+
+### Persistent media
+
+Scheduled media paths must be accessible to both API and worker containers. Store shared media under the mounted `/app/media` volume when using the supplied Compose deployment. The API and worker both mount the same named media volume.
+
+### Secrets
+
+The repository does not contain real credentials. The Compose deployment reads runtime configuration from `.env`; Docker documents `env_file` as a supported way to provide environment variables to services. For higher-security production environments, use the platform's secret-management facility rather than committing secrets to source control. citeturn0search1
+
+### Deployment limitation
+
+This release intentionally keeps SQLite and a single worker. Do not horizontally scale the API/worker pair against the same SQLite database. A future PostgreSQL migration can remove this deployment constraint if multi-instance scaling becomes necessary.
+
 ## API
 
 ```text
 GET  /health
+GET  /ready
 POST /research/run
 POST /analysis/run?limit=25
 POST /content/generate?limit=10
