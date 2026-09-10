@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import httpx
 
 from .config import Settings
+from .linkedin_media import LinkedInMediaClient
 
 
 class PublishingError(RuntimeError):
@@ -34,6 +35,8 @@ class LinkedInPublisher(Publisher):
         self.author = settings.linkedin_author_urn
         self.version = settings.linkedin_api_version
         self.timeout = settings.publishing_timeout_seconds
+        self.media_poll_attempts = settings.linkedin_media_poll_attempts
+        self.media_poll_seconds = settings.linkedin_media_poll_seconds
         if not self.token or not self.author:
             raise PublishingError("LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN are required", retryable=False)
 
@@ -48,8 +51,14 @@ class LinkedInPublisher(Publisher):
         if media_paths:
             if len(media_paths) > 1:
                 raise PublishingError("Phase 6C supports one LinkedIn image per post", retryable=False)
-            from .linkedin_media import LinkedInMediaClient
-            media = LinkedInMediaClient(self.token, self.author, self.version, self.timeout)
+            media = LinkedInMediaClient(
+                self.token,
+                self.author,
+                self.version,
+                self.timeout,
+                poll_attempts=self.media_poll_attempts,
+                poll_seconds=self.media_poll_seconds,
+            )
             image_urn = media.upload_image(media_paths[0])
             content = {"media": {"id": image_urn, "title": title.strip()}}
 
@@ -63,11 +72,24 @@ class LinkedInPublisher(Publisher):
             **content,
         }
         try:
-            response = httpx.post(self.endpoint, headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}, json=payload, timeout=self.timeout)
+            response = httpx.post(
+                self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.token}",
+                    "Linkedin-Version": self.version,
+                    "X-Restli-Protocol-Version": "2.0.0",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=self.timeout,
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
-            raise PublishingError(f"LinkedIn publish failed with HTTP {status}", retryable=status in {408, 409, 429} or status >= 500) from exc
+            raise PublishingError(
+                f"LinkedIn publish failed with HTTP {status}",
+                retryable=status in {408, 409, 429} or status >= 500,
+            ) from exc
         except httpx.RequestError as exc:
             raise PublishingError(f"LinkedIn publish request failed: {exc}", retryable=True) from exc
         remote_id = response.headers.get("x-restli-id", "")
