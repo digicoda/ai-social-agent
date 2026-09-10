@@ -1,10 +1,18 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from .analysis import run_analysis
+from .approval import queue, set_decision
 from .config import get_settings
+from .content import ContentGenerationError, generate_content
 from .research.runner import run_research
 
-app = FastAPI(title="AI Social Agent", version="0.2.0")
+app = FastAPI(title="AI Social Agent", version="0.3.0")
+
+
+class ApprovalRequest(BaseModel):
+    action: str = Field(pattern="^(approved|rejected)$")
+    reason: str = ""
 
 
 @app.get("/health")
@@ -35,3 +43,33 @@ def analysis_run(limit: int = 25) -> dict:
         "discarded": result.discarded,
         "failed": result.failed,
     }
+
+
+@app.post("/content/generate")
+def content_generate(limit: int = 10) -> dict:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    try:
+        return generate_content(get_settings(), limit=limit)
+    except ContentGenerationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/approval/queue")
+def approval_queue(status: str = "pending_approval", limit: int = 25) -> dict:
+    if status not in {"pending_approval", "approved", "rejected", "published"}:
+        raise HTTPException(status_code=400, detail="invalid status")
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    return {"items": queue(get_settings(), status=status, limit=limit)}
+
+
+@app.post("/approval/{draft_id}")
+def approval_decision(draft_id: int, request: ApprovalRequest) -> dict:
+    try:
+        changed = set_decision(get_settings(), draft_id, request.action, request.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not changed:
+        raise HTTPException(status_code=404, detail="draft not found")
+    return {"id": draft_id, "status": request.action}
