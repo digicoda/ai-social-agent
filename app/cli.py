@@ -14,6 +14,7 @@ from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("ai_social_agent.worker")
 
 
