@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     research_timeout_seconds: float = 15.0
     research_limit_per_source: int = 25
 
+    # Publishing
+    publishing_timeout_seconds: float = 20.0
+    linkedin_access_token: str = ""
+    linkedin_author_urn: str = ""
+    linkedin_api_version: str = "202603"
+
     @property
     def rss_feed_list(self) -> list[str]:
         return [item.strip() for item in self.rss_feeds.split(",") if item.strip()]
