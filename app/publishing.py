@@ -48,8 +48,10 @@ class LinkedInPublisher(Publisher):
             raise PublishingError(f"unsupported LinkedIn media type: {media_type}", retryable=False)
 
         paths = media_paths or []
+        # Preserve the historical direct-publish API: supplying one media path
+        # without an explicit media_type means an image post.
         if media_type == "none" and paths:
-            raise PublishingError("media_paths cannot be supplied when media_type is none", retryable=False)
+            media_type = "image"
         if media_type == "multi_image" and not 2 <= len(paths) <= 20:
             raise PublishingError("LinkedIn MultiImage publishing requires between 2 and 20 images", retryable=False)
         if media_type not in {"none", "multi_image"} and len(paths) > 1:
