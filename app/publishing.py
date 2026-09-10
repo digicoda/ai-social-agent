@@ -20,7 +20,7 @@ class PublishResult:
 class Publisher:
     provider = ""
 
-    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None, media_type: str = "image") -> PublishResult:
+    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None, media_type: str = "none") -> PublishResult:
         raise NotImplementedError
 
 
@@ -38,21 +38,25 @@ class LinkedInPublisher(Publisher):
         if not self.token or not self.author:
             raise PublishingError("LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN are required", retryable=False)
 
-    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None, media_type: str = "image") -> PublishResult:
+    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None, media_type: str = "none") -> PublishResult:
         commentary = body.strip()
         if hashtags:
             commentary += "\n\n" + " ".join(f"#{tag.lstrip('#')}" for tag in hashtags)
         if not commentary:
             raise PublishingError("cannot publish an empty post", retryable=False)
-        if media_type not in {"image", "document", "video", "multi_image"}:
+        if media_type not in {"none", "image", "document", "video", "multi_image"}:
             raise PublishingError(f"unsupported LinkedIn media type: {media_type}", retryable=False)
 
         paths = media_paths or []
+        # Preserve the historical direct-publish API: supplying one media path
+        # without an explicit media_type means an image post.
+        if media_type == "none" and paths:
+            media_type = "image"
         if media_type == "multi_image" and not 2 <= len(paths) <= 20:
             raise PublishingError("LinkedIn MultiImage publishing requires between 2 and 20 images", retryable=False)
-        if media_type != "multi_image" and len(paths) > 1:
+        if media_type not in {"none", "multi_image"} and len(paths) > 1:
             raise PublishingError("LinkedIn publishing supports one media file per post for this media type", retryable=False)
-        if media_type in {"document", "video"} and len(paths) != 1:
+        if media_type in {"document", "video", "image"} and len(paths) != 1:
             raise PublishingError(f"LinkedIn {media_type} publishing requires exactly one media file", retryable=False)
 
         content: dict = {}
@@ -81,8 +85,9 @@ class LinkedInPublisher(Publisher):
             "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []},
             "lifecycleState": "PUBLISHED",
             "isReshareDisabledByAuthor": False,
-            **content,
         }
+        if content:
+            payload["content"] = content
         try:
             response = httpx.post(self.endpoint, headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}, json=payload, timeout=self.timeout)
             response.raise_for_status()

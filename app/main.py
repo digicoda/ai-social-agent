@@ -8,11 +8,12 @@ from .config import get_settings
 from .content import ContentGenerationError, generate_content
 from .publish_service import publish_draft
 from .publishing import PublishingError
+from .readiness import check_readiness
 from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
-app = FastAPI(title="AI Social Agent", version="0.9.1")
+app = FastAPI(title="AI Social Agent", version="1.0.0")
 
 class ApprovalRequest(BaseModel):
     action: str = Field(pattern="^(approved|rejected)$")
@@ -49,6 +50,11 @@ def _authorize(x_api_key: str | None) -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "ai-social-agent"}
+
+@app.get("/ready")
+def ready(x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    return check_readiness(get_settings())
 
 @app.post("/research/run")
 def research_run(x_api_key: str | None = Header(default=None)) -> dict:
@@ -118,10 +124,8 @@ def publish_video(draft_id: int, request: VideoPublishRequest, x_api_key: str | 
 @app.post("/schedule/{draft_id}")
 def schedule(draft_id: int, request: ScheduleRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key)
-    try:
-        return schedule_draft(get_settings(), draft_id, request.provider, request.scheduled_for, request.max_attempts, request.media_type, request.media_paths)
-    except (ValueError, PublishingError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try: return schedule_draft(get_settings(), draft_id, request.provider, request.scheduled_for, request.max_attempts, request.media_type, request.media_paths)
+    except (ValueError, PublishingError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.get("/schedules")
 def schedule_list(status: str | None = None, limit: int = 50, x_api_key: str | None = Header(default=None)) -> dict:

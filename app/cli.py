@@ -1,4 +1,7 @@
 import argparse
+import logging
+import signal
+import time
 
 from .analytics import publishing_history, publishing_stats
 from .analysis import run_analysis
@@ -10,6 +13,35 @@ from .publishing import PublishingError
 from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("ai_social_agent.worker")
+
+
+def _run_worker_loop(settings, limit: int) -> None:
+    stop = False
+
+    def request_stop(signum, frame):
+        nonlocal stop
+        stop = True
+        logger.info("worker shutdown requested (signal=%s)", signum)
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    logger.info("worker started; poll interval=%ss", settings.worker_poll_seconds)
+
+    while not stop:
+        try:
+            result = run_due_schedules(settings, limit=limit)
+            if any(result.values()):
+                logger.info("worker cycle result=%s", result)
+        except Exception:
+            logger.exception("worker cycle failed; continuing")
+        if stop:
+            break
+        time.sleep(settings.worker_poll_seconds)
+
+    logger.info("worker stopped")
 
 
 def main() -> None:
@@ -24,6 +56,7 @@ def main() -> None:
     parser.add_argument("--media-type", choices=["image", "document", "video", "multi_image"], default="image")
     parser.add_argument("--scheduled-for", default="")
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--loop", action="store_true", help="keep the worker running and poll for due schedules")
     args = parser.parse_args()
     settings = get_settings()
 
@@ -60,7 +93,10 @@ def main() -> None:
     elif args.command == "schedules":
         for item in schedules(settings, limit=args.limit): print(item)
     elif args.command == "worker":
-        print(run_due_schedules(settings, limit=args.limit))
+        if args.loop:
+            _run_worker_loop(settings, args.limit)
+        else:
+            print(run_due_schedules(settings, limit=args.limit))
     elif args.command == "history":
         for item in publishing_history(settings.database_url, limit=args.limit, provider=args.provider): print(item)
     elif args.command == "stats":

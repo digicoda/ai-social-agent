@@ -31,7 +31,7 @@ def run_due_schedules(settings: Settings, limit: int = 10) -> dict[str, int]:
                 int(schedule["draft_id"]),
                 str(schedule["provider"]),
                 media_paths=media_paths or None,
-                media_type="image" if media_type == "none" else media_type,
+                media_type=media_type,
             )
             complete_schedule(settings.database_url, schedule_id)
             published += 1
