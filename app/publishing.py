@@ -4,6 +4,7 @@ import httpx
 
 from .config import Settings
 from .errors import PublishingError
+from .linkedin_document import LinkedInDocumentClient
 from .linkedin_media import LinkedInMediaClient
 
 
@@ -17,7 +18,14 @@ class PublishResult:
 class Publisher:
     provider = ""
 
-    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None) -> PublishResult:
+    def publish(
+        self,
+        title: str,
+        body: str,
+        hashtags: list[str],
+        media_paths: list[str] | None = None,
+        media_type: str = "image",
+    ) -> PublishResult:
         raise NotImplementedError
 
 
@@ -35,27 +43,48 @@ class LinkedInPublisher(Publisher):
         if not self.token or not self.author:
             raise PublishingError("LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN are required", retryable=False)
 
-    def publish(self, title: str, body: str, hashtags: list[str], media_paths: list[str] | None = None) -> PublishResult:
+    def publish(
+        self,
+        title: str,
+        body: str,
+        hashtags: list[str],
+        media_paths: list[str] | None = None,
+        media_type: str = "image",
+    ) -> PublishResult:
         commentary = body.strip()
         if hashtags:
             commentary += "\n\n" + " ".join(f"#{tag.lstrip('#')}" for tag in hashtags)
         if not commentary:
             raise PublishingError("cannot publish an empty post", retryable=False)
+        if media_type not in {"image", "document"}:
+            raise PublishingError(f"unsupported LinkedIn media type: {media_type}", retryable=False)
 
         content: dict = {}
         if media_paths:
             if len(media_paths) > 1:
-                raise PublishingError("Phase 6C supports one LinkedIn image per post", retryable=False)
-            media = LinkedInMediaClient(
-                self.token,
-                self.author,
-                self.version,
-                self.timeout,
-                poll_attempts=self.media_poll_attempts,
-                poll_seconds=self.media_poll_seconds,
-            )
-            image_urn = media.upload_image(media_paths[0])
-            content = {"media": {"id": image_urn, "title": title.strip()}}
+                raise PublishingError("LinkedIn publishing supports one media file per post in this phase", retryable=False)
+            if media_type == "document":
+                media = LinkedInDocumentClient(
+                    self.token,
+                    self.author,
+                    self.version,
+                    self.timeout,
+                    poll_attempts=self.media_poll_attempts,
+                    poll_seconds=self.media_poll_seconds,
+                )
+                document_urn = media.upload_document(media_paths[0])
+                content = {"media": {"id": document_urn, "title": title.strip() or media_paths[0]}}
+            else:
+                media = LinkedInMediaClient(
+                    self.token,
+                    self.author,
+                    self.version,
+                    self.timeout,
+                    poll_attempts=self.media_poll_attempts,
+                    poll_seconds=self.media_poll_seconds,
+                )
+                image_urn = media.upload_image(media_paths[0])
+                content = {"media": {"id": image_urn, "title": title.strip()}}
 
         payload = {
             "author": self.author,
