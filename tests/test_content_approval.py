@@ -81,4 +81,6 @@ def test_approval_queue_and_rejection(tmp_path):
     assert len(queue(settings)) == 1
     assert set_decision(settings, draft_id, "rejected", "Needs a clearer example")
     assert queue(settings) == []
-    assert queue(settings, status="rejected")[0]["rejection_reason"] == "Needs a clearer example"
+    rejected = queue(settings, status="rejected")[0]
+    assert rejected["status"] == "rejected"
+    assert rejected["rejection_reason"] == "Needs a clearer example"
