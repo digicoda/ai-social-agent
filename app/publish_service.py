@@ -35,6 +35,7 @@ def publish_draft(settings: Settings, draft_id: int, provider_name: str) -> dict
 
     claim_draft_for_publish(settings.database_url, draft_id)
     connection = connect(settings.database_url)
+    claimed = True
     try:
         row = connection.execute(
             "SELECT id, title, body, hashtags FROM content_drafts WHERE id = ? AND status = 'publishing'",
@@ -43,19 +44,20 @@ def publish_draft(settings: Settings, draft_id: int, provider_name: str) -> dict
         if row is None:
             raise PublishingError("draft publishing claim was lost", retryable=True)
 
-        publisher = get_publisher(settings, provider_name)
         try:
+            publisher = get_publisher(settings, provider_name)
             result = publisher.publish(row["title"], row["body"], json.loads(row["hashtags"]))
         except PublishingError as exc:
             save_publishing_attempt(connection, draft_id, provider_name, "failed", error=str(exc))
-            release_draft_publish_claim(settings.database_url, draft_id)
             raise
         except Exception as exc:
             save_publishing_attempt(connection, draft_id, provider_name, "failed", error=str(exc))
-            release_draft_publish_claim(settings.database_url, draft_id)
             raise PublishingError(f"unexpected publishing error: {exc}", retryable=True) from exc
-
         save_publishing_attempt(connection, draft_id, provider_name, "published", remote_id=result.remote_id)
+    except Exception:
+        release_draft_publish_claim(settings.database_url, draft_id)
+        claimed = False
+        raise
     finally:
         connection.close()
 
