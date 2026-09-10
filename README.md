@@ -57,6 +57,19 @@ If a provider already has a successful publishing attempt for the same draft, a 
 
 Phase 5 exposes publishing attempts and aggregate operational statistics through both the API and CLI.
 
+### Phase 6C.1 — LinkedIn image upload
+
+LinkedIn image publishing now follows the current Images API lifecycle rather than treating `/rest/images` as a direct binary-upload endpoint:
+
+1. `POST /rest/images?action=initializeUpload` with the configured author as owner.
+2. `PUT` the local JPEG, PNG, or GIF bytes to LinkedIn's returned upload URL.
+3. Poll `GET /rest/images/{imageUrn}` until the asset reaches `AVAILABLE`.
+4. Create the LinkedIn post with the resulting image URN.
+
+`PROCESSING_FAILED` is treated as a permanent publishing error. Temporary HTTP/network failures remain retryable. Image readiness polling is bounded by `LINKEDIN_MEDIA_POLL_ATTEMPTS` and `LINKEDIN_MEDIA_POLL_SECONDS`.
+
+Phase 6C currently supports one image per LinkedIn post.
+
 ### Lightweight API protection
 
 Set `INTERNAL_API_KEY` in production. When configured, all mutation and operational endpoints require the same value in the `X-API-Key` header. `/health` remains public. Development keeps the key optional for local use.
@@ -69,6 +82,8 @@ LINKEDIN_ACCESS_TOKEN=
 LINKEDIN_AUTHOR_URN=urn:li:person:<id>
 LINKEDIN_API_VERSION=202608
 PUBLISHING_TIMEOUT_SECONDS=20
+LINKEDIN_MEDIA_POLL_ATTEMPTS=10
+LINKEDIN_MEDIA_POLL_SECONDS=1
 RETRY_BASE_SECONDS=60
 RETRY_MAX_SECONDS=3600
 WORKER_BATCH_SIZE=10
