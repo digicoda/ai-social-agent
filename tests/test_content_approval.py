@@ -14,15 +14,25 @@ class FakeResponse:
 
     def json(self):
         return {
-            "candidates": [{
-                "content": {"parts": [{"text": json.dumps({
-                    "title": "A practical fix",
-                    "body": "Here is a concise educational post about the issue and how to approach it.",
-                    "hashtags": ["webdev", "debugging", "software"],
-                    "call_to_action": "What would you check first?",
-                    "confidence": 91,
-                })]}
-            }]
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": json.dumps(
+                                    {
+                                        "title": "A practical fix",
+                                        "body": "Here is a concise educational post about the issue and how to approach it.",
+                                        "hashtags": ["webdev", "debugging", "software"],
+                                        "call_to_action": "What would you check first?",
+                                        "confidence": 91,
+                                    }
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
         }
 
 
@@ -50,9 +60,14 @@ def test_approval_queue_and_rejection(tmp_path):
     problem = Problem(source="test", external_id="1", title="Approval test", url="https://example.com")
     assert save_problem(connection, problem)
     problem_id = connection.execute("SELECT id FROM problems").fetchone()[0]
-    save_analysis(connection, problem_id, ProblemAnalysis("pain", "audience", "cause", "angle", ["h1", "h2", "h3"], [], 80), "approval_queue")
+    save_analysis(
+        connection,
+        problem_id,
+        ProblemAnalysis("pain", "audience", "cause", "angle", ["h1", "h2", "h3"], [], 80),
+        "approval_queue",
+    )
     connection.execute(
-        "INSERT INTO content_drafts (problem_id, platform, title, body, hashtags, call_to_action, status, generation_confidence, created_at, updated_at) VALUES (?, 'generic', 'Draft', 'Body', '[\"tag\"]', 'Question?', 'pending_approval', 80, '2026-01-01', '2026-01-01')",
+        "INSERT INTO content_drafts (problem_id, platform, title, body, hashtags, call_to_action, status, generation_confidence, created_at, updated_at) VALUES (?, 'generic', 'Draft', 'Body', '[\\\"tag\\\"]', 'Question?', 'pending_approval', 80, '2026-01-01', '2026-01-01')",
         (problem_id,),
     )
     connection.commit()
