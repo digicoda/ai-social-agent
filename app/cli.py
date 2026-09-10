@@ -20,6 +20,8 @@ def main() -> None:
     parser.add_argument("--schedule-id", type=int)
     parser.add_argument("--reason", default="")
     parser.add_argument("--provider", default="linkedin")
+    parser.add_argument("--media-path", default="")
+    parser.add_argument("--media-type", choices=["image", "document"], default="image")
     parser.add_argument("--scheduled-for", default="")
     parser.add_argument("--max-attempts", type=int, default=3)
     args = parser.parse_args()
@@ -44,7 +46,9 @@ def main() -> None:
         print(f"draft={args.draft_id} status={'approved' if args.command == 'approve' else 'rejected'}")
     elif args.command == "publish":
         if not args.draft_id: parser.error("--draft-id is required")
-        try: print(publish_draft(settings, args.draft_id, args.provider))
+        try:
+            media_paths = [args.media_path] if args.media_path else None
+            print(publish_draft(settings, args.draft_id, args.provider, media_paths=media_paths, media_type=args.media_type))
         except PublishingError as exc: parser.error(str(exc))
     elif args.command == "schedule":
         if not args.draft_id or not args.scheduled_for: parser.error("--draft-id and --scheduled-for are required")
