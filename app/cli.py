@@ -21,7 +21,7 @@ def main() -> None:
     parser.add_argument("--reason", default="")
     parser.add_argument("--provider", default="linkedin")
     parser.add_argument("--media-path", default="")
-    parser.add_argument("--media-type", choices=["image", "document"], default="image")
+    parser.add_argument("--media-type", choices=["image", "document", "video"], default="image")
     parser.add_argument("--scheduled-for", default="")
     parser.add_argument("--max-attempts", type=int, default=3)
     args = parser.parse_args()
