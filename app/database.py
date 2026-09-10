@@ -1,7 +1,9 @@
+import json
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .ai import ProblemAnalysis
 from .schemas import Problem
 
 
@@ -26,6 +28,20 @@ CREATE TABLE IF NOT EXISTS problems (
 );
 CREATE INDEX IF NOT EXISTS idx_problems_source ON problems(source);
 CREATE INDEX IF NOT EXISTS idx_problems_discovered ON problems(discovered_at);
+
+CREATE TABLE IF NOT EXISTS problem_analyses (
+    problem_id INTEGER PRIMARY KEY,
+    pain_point TEXT NOT NULL,
+    audience TEXT NOT NULL,
+    root_cause TEXT NOT NULL,
+    solution_angle TEXT NOT NULL,
+    hooks TEXT NOT NULL DEFAULT '[]',
+    risks TEXT NOT NULL DEFAULT '[]',
+    confidence INTEGER NOT NULL,
+    decision TEXT NOT NULL,
+    analyzed_at TEXT NOT NULL,
+    FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
 """
 
 
@@ -40,13 +56,12 @@ def connect(database_url: str) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
     connection.executescript(SCHEMA)
     return connection
 
 
 def save_problem(connection: sqlite3.Connection, problem: Problem) -> bool:
-    import json
-
     cursor = connection.execute(
         """INSERT OR IGNORE INTO problems
         (source, external_id, title, url, summary, body, tags, score, comments,
@@ -70,3 +85,60 @@ def save_problem(connection: sqlite3.Connection, problem: Problem) -> bool:
     )
     connection.commit()
     return cursor.rowcount == 1
+
+
+def list_problems(connection: sqlite3.Connection, limit: int = 25) -> list[tuple[int, Problem]]:
+    rows = connection.execute(
+        "SELECT * FROM problems ORDER BY score DESC, discovered_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+    problems: list[tuple[int, Problem]] = []
+    from datetime import datetime
+
+    for row in rows:
+        published_at = datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
+        discovered_at = datetime.fromisoformat(row["discovered_at"])
+        problems.append((
+            int(row["id"]),
+            Problem(
+                source=row["source"],
+                external_id=row["external_id"],
+                title=row["title"],
+                url=row["url"],
+                summary=row["summary"],
+                body=row["body"],
+                tags=json.loads(row["tags"]),
+                score=int(row["score"]),
+                comments=int(row["comments"]),
+                published_at=published_at,
+                discovered_at=discovered_at,
+                metadata=json.loads(row["metadata"]),
+            ),
+        ))
+    return problems
+
+
+def save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: ProblemAnalysis, decision: str) -> None:
+    from datetime import datetime, timezone
+
+    connection.execute(
+        """INSERT INTO problem_analyses
+        (problem_id, pain_point, audience, root_cause, solution_angle, hooks, risks, confidence, decision, analyzed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(problem_id) DO UPDATE SET
+            pain_point=excluded.pain_point, audience=excluded.audience, root_cause=excluded.root_cause,
+            solution_angle=excluded.solution_angle, hooks=excluded.hooks, risks=excluded.risks,
+            confidence=excluded.confidence, decision=excluded.decision, analyzed_at=excluded.analyzed_at""",
+        (
+            problem_id,
+            analysis.pain_point,
+            analysis.audience,
+            analysis.root_cause,
+            analysis.solution_angle,
+            json.dumps(analysis.hooks, ensure_ascii=False),
+            json.dumps(analysis.risks, ensure_ascii=False),
+            analysis.confidence,
+            decision,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    connection.commit()
