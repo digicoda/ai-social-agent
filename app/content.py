@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 import httpx
 
-from .ai import GeminiError, ProblemAnalysis
+from .ai import ProblemAnalysis
 from .config import Settings
-from .database import get_analysis, list_problems, save_draft
+from .database import connect, get_analysis, list_problems, save_draft
 
 
 @dataclass(slots=True)
@@ -68,11 +68,9 @@ def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
     if not settings.gemini_api_key:
         raise ContentGenerationError("GEMINI_API_KEY is not configured")
 
-    generated = 0
-    skipped = 0
-    failed = 0
+    generated = skipped = failed = 0
     with httpx.Client(timeout=settings.gemini_timeout_seconds) as client:
-        connection = __import__("app.database", fromlist=["connect"]).connect(settings.database_url)
+        connection = connect(settings.database_url)
         try:
             for problem_id, problem in list_problems(connection, limit=limit):
                 existing = connection.execute(
@@ -92,7 +90,7 @@ def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
                     save_draft(connection, problem_id, "generic", draft.title, draft.body,
                                 draft.hashtags, draft.call_to_action, draft.confidence)
                     generated += 1
-                except (httpx.HTTPError, GeminiError, ContentGenerationError, ValueError):
+                except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError):
                     failed += 1
         finally:
             connection.close()
