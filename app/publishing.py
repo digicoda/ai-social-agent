@@ -3,13 +3,8 @@ from dataclasses import dataclass
 import httpx
 
 from .config import Settings
+from .errors import PublishingError
 from .linkedin_media import LinkedInMediaClient
-
-
-class PublishingError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool = True) -> None:
-        super().__init__(message)
-        self.retryable = retryable
 
 
 @dataclass(slots=True)
