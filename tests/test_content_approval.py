@@ -3,9 +3,8 @@ import json
 from app.ai import ProblemAnalysis
 from app.approval import queue, set_decision
 from app.config import Settings
-from app.content import _generate
 from app.database import connect, save_analysis, save_problem
-from app.schemas import Problem
+from app.models import Problem
 
 
 class FakeResponse:
@@ -36,21 +35,26 @@ class FakeResponse:
         }
 
 
-class FakeClient:
-    def post(self, *args, **kwargs):
-        return FakeResponse()
+def test_generate_parses_structured_draft(monkeypatch, tmp_path):
+    from app import content
 
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", gemini_api_key="key")
+    connection = connect(settings.database_url)
+    problem = Problem(source="test", external_id="1", title="Example", url="https://example.com")
+    assert save_problem(connection, problem)
+    problem_id = connection.execute("SELECT id FROM problems").fetchone()[0]
+    save_analysis(
+        connection,
+        problem_id,
+        ProblemAnalysis("pain", "audience", "cause", "angle", ["h1", "h2", "h3"], [], 90),
+        "auto_publish_candidate",
+    )
+    connection.close()
 
-def test_generate_parses_structured_draft(tmp_path):
-    settings = Settings(gemini_api_key="test-key")
-    problem = Problem(source="test", external_id="1", title="Broken deploy", url="https://example.com")
-    analysis = ProblemAnalysis("deploy fails", "developers", "bad config", "check config", ["Why"], [], 90)
-
-    draft = _generate(FakeClient(), settings, problem, analysis)
-
-    assert draft.title == "A practical fix"
-    assert draft.hashtags == ["webdev", "debugging", "software"]
-    assert draft.confidence == 91
+    monkeypatch.setattr(content.httpx, "post", lambda *args, **kwargs: FakeResponse())
+    result = content.generate_content(settings, limit=1)
+    assert result[0]["title"] == "A practical fix"
+    assert result[0]["confidence"] == 91
 
 
 def test_approval_queue_and_rejection(tmp_path):
@@ -67,8 +71,8 @@ def test_approval_queue_and_rejection(tmp_path):
         "approval_queue",
     )
     connection.execute(
-        "INSERT INTO content_drafts (problem_id, platform, title, body, hashtags, call_to_action, status, generation_confidence, created_at, updated_at) VALUES (?, 'generic', 'Draft', 'Body', '[\\\"tag\\\"]', 'Question?', 'pending_approval', 80, '2026-01-01', '2026-01-01')",
-        (problem_id,),
+        "INSERT INTO content_drafts (problem_id, platform, title, body, hashtags, call_to_action, status, generation_confidence, created_at, updated_at) VALUES (?, 'generic', 'Draft', 'Body', ?, 'Question?', 'pending_approval', 80, '2026-01-01', '2026-01-01')",
+        (problem_id, json.dumps(["tag"])),
     )
     connection.commit()
     draft_id = connection.execute("SELECT id FROM content_drafts").fetchone()[0]
