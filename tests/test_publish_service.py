@@ -1,11 +1,9 @@
 import json
 
-import pytest
-
 from app.config import Settings
 from app.database import connect
 from app.publish_service import publish_draft
-from app.publishing import PublishResult, Publisher, PublishingError
+from app.publishing import PublishResult, Publisher
 import app.publish_service as service
 
 
@@ -31,6 +29,9 @@ def test_publish_service_marks_approved_draft_published(tmp_path, monkeypatch):
 
     assert result["remote_id"] == "remote-123"
     connection = connect(settings.database_url)
-    assert connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()[0] == "published"
-    assert connection.execute("SELECT status, remote_id FROM publishing_attempts WHERE draft_id = ?", (draft_id,)).fetchone()[:2] == ("published", "remote-123")
+    draft = connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
+    attempt = connection.execute("SELECT status, remote_id FROM publishing_attempts WHERE draft_id = ?", (draft_id,)).fetchone()
+    assert draft["status"] == "published"
+    assert attempt["status"] == "published"
+    assert attempt["remote_id"] == "remote-123"
     connection.close()
