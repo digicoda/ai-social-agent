@@ -50,7 +50,8 @@ def main() -> None:
         except PublishingError as exc: parser.error(str(exc))
     elif args.command == "schedule":
         if not args.draft_id or not args.scheduled_for: parser.error("--draft-id and --scheduled-for are required")
-        try: print(schedule_draft(settings, args.draft_id, args.provider, args.scheduled_for, args.max_attempts))
+        media_type = args.media_type if args.media_path else "none"
+        try: print(schedule_draft(settings, args.draft_id, args.provider, args.scheduled_for, args.max_attempts, media_type, args.media_path))
         except (ValueError, PublishingError) as exc: parser.error(str(exc))
     elif args.command == "cancel-schedule":
         if not args.schedule_id: parser.error("--schedule-id is required")
