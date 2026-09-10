@@ -54,6 +54,22 @@ CREATE TABLE IF NOT EXISTS publishing_attempts (
     FOREIGN KEY(draft_id) REFERENCES content_drafts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_publishing_attempts_draft ON publishing_attempts(draft_id);
+CREATE INDEX IF NOT EXISTS idx_publishing_attempts_remote ON publishing_attempts(provider, remote_id);
+CREATE TABLE IF NOT EXISTS publish_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    draft_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    scheduled_for TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(draft_id) REFERENCES content_drafts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_publish_schedules_due ON publish_schedules(status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_publish_schedules_draft ON publish_schedules(draft_id);
 """
 
 
@@ -143,7 +159,103 @@ def save_publishing_attempt(connection: sqlite3.Connection, draft_id: int, provi
     connection.commit(); return int(cursor.lastrowid)
 
 
+def existing_published_attempt(connection: sqlite3.Connection, draft_id: int, provider: str) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM publishing_attempts WHERE draft_id = ? AND provider = ? AND status = 'published' AND remote_id != '' ORDER BY attempted_at DESC LIMIT 1",
+        (draft_id, provider),
+    ).fetchone()
+
+
 def mark_draft_published(connection: sqlite3.Connection, draft_id: int) -> bool:
     from datetime import datetime, timezone
     cursor = connection.execute("UPDATE content_drafts SET status = 'published', updated_at = ? WHERE id = ? AND status = 'approved'", (datetime.now(timezone.utc).isoformat(), draft_id))
     connection.commit(); return cursor.rowcount == 1
+
+
+def create_schedule(connection: sqlite3.Connection, draft_id: int, provider: str, scheduled_for: str, max_attempts: int = 3) -> int:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = connection.execute(
+        "INSERT INTO publish_schedules (draft_id, provider, scheduled_for, status, attempts, max_attempts, created_at, updated_at) VALUES (?, ?, ?, 'scheduled', 0, ?, ?, ?)",
+        (draft_id, provider, scheduled_for, max(1, max_attempts), now, now),
+    )
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
+def get_schedule(connection: sqlite3.Connection, schedule_id: int) -> sqlite3.Row | None:
+    return connection.execute("SELECT * FROM publish_schedules WHERE id = ?", (schedule_id,)).fetchone()
+
+
+def list_schedules(database_url: str, status: str | None = None, limit: int = 50) -> list[sqlite3.Row]:
+    connection = connect(database_url)
+    try:
+        if status:
+            return connection.execute("SELECT * FROM publish_schedules WHERE status = ? ORDER BY scheduled_for ASC LIMIT ?", (status, limit)).fetchall()
+        return connection.execute("SELECT * FROM publish_schedules ORDER BY scheduled_for ASC LIMIT ?", (limit,)).fetchall()
+    finally:
+        connection.close()
+
+
+def list_due_schedules(database_url: str, limit: int = 10) -> list[sqlite3.Row]:
+    from datetime import datetime, timezone
+    connection = connect(database_url)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        return connection.execute(
+            "SELECT * FROM publish_schedules WHERE status IN ('scheduled', 'retrying') AND scheduled_for <= ? ORDER BY scheduled_for ASC LIMIT ?",
+            (now, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+
+
+def claim_due_schedule(database_url: str, schedule_id: int) -> bool:
+    from datetime import datetime, timezone
+    connection = connect(database_url)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute(
+            "UPDATE publish_schedules SET status = 'running', updated_at = ? WHERE id = ? AND status IN ('scheduled', 'retrying')",
+            (now, schedule_id),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()
+
+
+def complete_schedule(database_url: str, schedule_id: int) -> bool:
+    from datetime import datetime, timezone
+    connection = connect(database_url)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute("UPDATE publish_schedules SET status = 'published', updated_at = ? WHERE id = ? AND status = 'running'", (now, schedule_id))
+        connection.commit(); return cursor.rowcount == 1
+    finally:
+        connection.close()
+
+
+def fail_schedule(database_url: str, schedule_id: int, error: str, next_run: str | None, attempts: int, status: str) -> bool:
+    from datetime import datetime, timezone
+    connection = connect(database_url)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute(
+            "UPDATE publish_schedules SET status = ?, scheduled_for = COALESCE(?, scheduled_for), attempts = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'",
+            (status, next_run, attempts, error, now, schedule_id),
+        )
+        connection.commit(); return cursor.rowcount == 1
+    finally:
+        connection.close()
+
+
+def cancel_schedule(database_url: str, schedule_id: int) -> bool:
+    from datetime import datetime, timezone
+    connection = connect(database_url)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute("UPDATE publish_schedules SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('scheduled', 'retrying')", (now, schedule_id))
+        connection.commit(); return cursor.rowcount == 1
+    finally:
+        connection.close()
