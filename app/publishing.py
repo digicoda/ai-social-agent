@@ -47,29 +47,32 @@ class LinkedInPublisher(Publisher):
         if media_type not in {"image", "document", "video", "multi_image"}:
             raise PublishingError(f"unsupported LinkedIn media type: {media_type}", retryable=False)
 
+        paths = media_paths or []
+        if media_type == "multi_image" and not 2 <= len(paths) <= 20:
+            raise PublishingError("LinkedIn MultiImage publishing requires between 2 and 20 images", retryable=False)
+        if media_type != "multi_image" and len(paths) > 1:
+            raise PublishingError("LinkedIn publishing supports one media file per post for this media type", retryable=False)
+        if media_type in {"document", "video"} and len(paths) != 1:
+            raise PublishingError(f"LinkedIn {media_type} publishing requires exactly one media file", retryable=False)
+
         content: dict = {}
-        if media_paths:
+        if paths:
             if media_type == "multi_image":
-                if not 2 <= len(media_paths) <= 20:
-                    raise PublishingError("LinkedIn MultiImage publishing requires between 2 and 20 images", retryable=False)
                 media = LinkedInMultiImageClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
-                image_urns = media.upload_images(media_paths)
+                image_urns = media.upload_images(paths)
                 content = {"multiImage": {"images": [{"id": urn} for urn in image_urns]}}
+            elif media_type == "document":
+                media = LinkedInDocumentClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
+                document_urn = media.upload_document(paths[0])
+                content = {"media": {"id": document_urn, "title": title.strip() or paths[0]}}
+            elif media_type == "video":
+                media = LinkedInVideoClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
+                video_urn = media.upload_video(paths[0])
+                content = {"media": {"id": video_urn}}
             else:
-                if len(media_paths) > 1:
-                    raise PublishingError("LinkedIn publishing supports one media file per post for this media type", retryable=False)
-                if media_type == "document":
-                    media = LinkedInDocumentClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
-                    document_urn = media.upload_document(media_paths[0])
-                    content = {"media": {"id": document_urn, "title": title.strip() or media_paths[0]}}
-                elif media_type == "video":
-                    media = LinkedInVideoClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
-                    video_urn = media.upload_video(media_paths[0])
-                    content = {"media": {"id": video_urn}}
-                else:
-                    media = LinkedInMediaClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
-                    image_urn = media.upload_image(media_paths[0])
-                    content = {"media": {"id": image_urn}}
+                media = LinkedInMediaClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
+                image_urn = media.upload_image(paths[0])
+                content = {"media": {"id": image_urn}}
 
         payload = {
             "author": self.author,
@@ -81,12 +84,7 @@ class LinkedInPublisher(Publisher):
             **content,
         }
         try:
-            response = httpx.post(
-                self.endpoint,
-                headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"},
-                json=payload,
-                timeout=self.timeout,
-            )
+            response = httpx.post(self.endpoint, headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}, json=payload, timeout=self.timeout)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
