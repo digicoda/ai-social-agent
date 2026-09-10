@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from .ai import GeminiClient, ProblemAnalysis
+from .clustering import cluster_problems
 from .config import Settings
 from .database import connect, list_problems, save_analysis
 
@@ -12,6 +13,8 @@ class AnalysisResult:
     approval_queue: int = 0
     discarded: int = 0
     failed: int = 0
+    clusters: int = 0
+    cluster_assignments: int = 0
 
 
 def decision_for_score(score: int) -> str:
@@ -45,6 +48,10 @@ def run_analysis(settings: Settings, limit: int = 25) -> AnalysisResult:
                     result.discarded += 1
             except Exception:
                 result.failed += 1
+
+        cluster_result = cluster_problems(connection, limit=max(limit, 250))
+        result.clusters = cluster_result.clusters
+        result.cluster_assignments = cluster_result.assignments
     finally:
         connection.close()
     return result
