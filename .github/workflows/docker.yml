@@ -1,0 +1,41 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+      - 'phase-*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ai-social-agent:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test container health endpoint
+        run: |
+          docker run -d --rm --name ai-social-agent-smoke -p 18000:8000 ai-social-agent:test
+          trap 'docker stop ai-social-agent-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs ai-social-agent-smoke
+          exit 1
