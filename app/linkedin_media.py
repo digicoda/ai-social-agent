@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import httpx
 
-from .publishing import PublishingError
+from .errors import PublishingError
 
 
 class LinkedInMediaClient:
