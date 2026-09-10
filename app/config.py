@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = "sqlite:///./data/ai_social_agent.db"
+    internal_api_key: str = ""
 
     # AI provider
     gemini_api_key: str = ""
