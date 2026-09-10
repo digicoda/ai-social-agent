@@ -1,3 +1,5 @@
+import json
+
 from .config import Settings
 from .database import connect, list_drafts, update_draft_status
 
@@ -15,7 +17,7 @@ def queue(settings: Settings, status: str | None = "pending_approval", limit: in
                 "platform": row["platform"],
                 "title": row["title"],
                 "body": row["body"],
-                "hashtags": __import__("json").loads(row["hashtags"]),
+                "hashtags": json.loads(row["hashtags"]),
                 "call_to_action": row["call_to_action"],
                 "status": row["status"],
                 "generation_confidence": int(row["generation_confidence"]),
