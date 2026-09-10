@@ -6,6 +6,7 @@ from .config import Settings
 from .errors import PublishingError
 from .linkedin_document import LinkedInDocumentClient
 from .linkedin_media import LinkedInMediaClient
+from .linkedin_video import LinkedInVideoClient
 
 
 @dataclass(slots=True)
@@ -56,7 +57,7 @@ class LinkedInPublisher(Publisher):
             commentary += "\n\n" + " ".join(f"#{tag.lstrip('#')}" for tag in hashtags)
         if not commentary:
             raise PublishingError("cannot publish an empty post", retryable=False)
-        if media_type not in {"image", "document"}:
+        if media_type not in {"image", "document", "video"}:
             raise PublishingError(f"unsupported LinkedIn media type: {media_type}", retryable=False)
 
         content: dict = {}
@@ -64,27 +65,17 @@ class LinkedInPublisher(Publisher):
             if len(media_paths) > 1:
                 raise PublishingError("LinkedIn publishing supports one media file per post in this phase", retryable=False)
             if media_type == "document":
-                media = LinkedInDocumentClient(
-                    self.token,
-                    self.author,
-                    self.version,
-                    self.timeout,
-                    poll_attempts=self.media_poll_attempts,
-                    poll_seconds=self.media_poll_seconds,
-                )
+                media = LinkedInDocumentClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
                 document_urn = media.upload_document(media_paths[0])
                 content = {"media": {"id": document_urn, "title": title.strip() or media_paths[0]}}
+            elif media_type == "video":
+                media = LinkedInVideoClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
+                video_urn = media.upload_video(media_paths[0])
+                content = {"media": {"id": video_urn}}
             else:
-                media = LinkedInMediaClient(
-                    self.token,
-                    self.author,
-                    self.version,
-                    self.timeout,
-                    poll_attempts=self.media_poll_attempts,
-                    poll_seconds=self.media_poll_seconds,
-                )
+                media = LinkedInMediaClient(self.token, self.author, self.version, self.timeout, poll_attempts=self.media_poll_attempts, poll_seconds=self.media_poll_seconds)
                 image_urn = media.upload_image(media_paths[0])
-                content = {"media": {"id": image_urn, "title": title.strip()}}
+                content = {"media": {"id": image_urn}}
 
         payload = {
             "author": self.author,
@@ -98,22 +89,14 @@ class LinkedInPublisher(Publisher):
         try:
             response = httpx.post(
                 self.endpoint,
-                headers={
-                    "Authorization": f"Bearer {self.token}",
-                    "Linkedin-Version": self.version,
-                    "X-Restli-Protocol-Version": "2.0.0",
-                    "Content-Type": "application/json",
-                },
+                headers={"Authorization": f"Bearer {self.token}", "Linkedin-Version": self.version, "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"},
                 json=payload,
                 timeout=self.timeout,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
-            raise PublishingError(
-                f"LinkedIn publish failed with HTTP {status}",
-                retryable=status in {408, 409, 429} or status >= 500,
-            ) from exc
+            raise PublishingError(f"LinkedIn publish failed with HTTP {status}", retryable=status in {408, 409, 429} or status >= 500) from exc
         except httpx.RequestError as exc:
             raise PublishingError(f"LinkedIn publish request failed: {exc}", retryable=True) from exc
         remote_id = response.headers.get("x-restli-id", "")
