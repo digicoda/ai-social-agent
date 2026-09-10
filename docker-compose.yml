@@ -32,11 +32,6 @@ services:
       - app-data:/app/data
       - app-media:/app/media
 
-autostart:
-  # This key intentionally documents that both services are long-lived.
-  # Compose ignores unknown top-level extension-like keys only when prefixed with x-;
-  # kept out of the actual Compose model below.
-  
 volumes:
   app-data:
   app-media:
