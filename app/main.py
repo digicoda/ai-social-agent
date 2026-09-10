@@ -12,7 +12,7 @@ from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
-app = FastAPI(title="AI Social Agent", version="0.6.0")
+app = FastAPI(title="AI Social Agent", version="0.7.0")
 
 class ApprovalRequest(BaseModel):
     action: str = Field(pattern="^(approved|rejected)$")
@@ -26,6 +26,10 @@ class ScheduleRequest(BaseModel):
 class MediaPublishRequest(BaseModel):
     provider: str = "linkedin"
     image_path: str = Field(min_length=1)
+
+class DocumentPublishRequest(BaseModel):
+    provider: str = "linkedin"
+    document_path: str = Field(min_length=1)
 
 def _authorize(x_api_key: str | None) -> None:
     expected = get_settings().internal_api_key
@@ -77,7 +81,13 @@ def publish(draft_id: int, provider: str = "linkedin", x_api_key: str | None = H
 @app.post("/publish/{draft_id}/image")
 def publish_image(draft_id: int, request: MediaPublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key)
-    try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.image_path])
+    try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.image_path], media_type="image")
+    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@app.post("/publish/{draft_id}/document")
+def publish_document(draft_id: int, request: DocumentPublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.document_path], media_type="document")
     except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.post("/schedule/{draft_id}")
