@@ -20,7 +20,7 @@ Phase 2 adds a Gemini-backed analysis layer after research and scoring.
 The pipeline is:
 
 ```text
-Sources -> Normalized Problems -> SQLite -> Deterministic Score -> Gemini Analysis -> Decision
+Sources -> Normalize -> Cross-source dedup -> SQLite -> Deterministic score -> Gemini analysis -> Decision -> Clusters
 ```
 
 Decision thresholds:
@@ -30,6 +30,14 @@ Decision thresholds:
 - `<70`: discard
 
 Gemini returns structured analysis containing the pain point, audience, root cause, solution angle, three hooks, risks, and confidence. The API key is loaded from `GEMINI_API_KEY` and sent to Gemini using the `x-goog-api-key` request header; it is never stored in SQLite.
+
+### Cross-source deduplication
+
+Phase 1's exact fingerprint remains the database safety net. Phase 2 adds deterministic fuzzy matching across different sources using normalized technical tokens and title/body Jaccard similarity. This catches the same underlying issue when GitHub, Reddit, Stack Overflow, or RSS describe it with slightly different wording.
+
+### Problem clustering
+
+Phase 2 also groups related problems into SQLite-backed clusters. Clustering is deterministic and local, so it does not require embeddings or an additional AI request. The highest-scoring problem becomes the cluster representative, and related problems are assigned to it using a similarity threshold.
 
 ### Run locally
 
@@ -57,7 +65,7 @@ Publishing is intentionally not included in Phase 2 yet. Analysis produces candi
 ## Architecture
 
 ```text
-Sources -> Normalized Problems -> SQLite -> Scoring -> AI Analysis -> Content -> Approval -> Publishing
+Sources -> Normalized Problems -> Deduplication -> SQLite -> Scoring -> AI Analysis -> Clustering -> Content -> Approval -> Publishing
 ```
 
 The system avoids local LLMs, Redis, Elasticsearch, Temporal, and other heavy infrastructure so it can remain suitable for shared hosting.
