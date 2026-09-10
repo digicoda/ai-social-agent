@@ -12,78 +12,55 @@ Phase 4 currently supports LinkedIn text publishing through the LinkedIn Posts A
 
 Phase 5 turns approved publishing into a controlled automation workflow without removing human approval.
 
+Only `approved` drafts can be scheduled. Publishing attempts are audited, retries are classified, and successful remote IDs are reused for idempotent retries.
+
+## Phase 6 — LinkedIn media publishing
+
+### Images
+
+LinkedIn image publishing initializes an image upload, uploads the binary to the returned URL, waits for the asset to become `AVAILABLE`, and then creates the post with the image URN. The implementation supports JPEG, PNG, and GIF and bounds readiness polling with `LINKEDIN_MEDIA_POLL_ATTEMPTS` and `LINKEDIN_MEDIA_POLL_SECONDS`.
+
+### Documents
+
+Native PDF, DOC, DOCX, PPT, and PPTX publishing uses the same initialize/upload/readiness lifecycle. Documents are posted with the required media title.
+
+### Video
+
+Native LinkedIn video publishing uses the Videos API multipart lifecycle: initialize the upload, upload the provider-specified byte ranges, collect ETags, finalize the upload, wait for readiness, then create the video post. Captions and thumbnails remain deferred.
+
+### Multi-image
+
+Phase 6F adds native organic MultiImage posts. LinkedIn supports **2–20 images** in one MultiImage post, and every image must be owned by the author or organization. The agent uploads each image through the Images API, waits for each asset to become available, then sends the resulting image URNs in `content.multiImage.images`.
+
+MultiImage is exposed through:
+
 ```text
-Research -> Analyze -> Generate -> Human Approval
-                                      |
-                                   Approved
-                                      |
-                              Schedule / Publish
-                                      |
-                              Worker -> Publisher
-                                      |
-                       +--------------+--------------+
-                       |                             |
-                    Success                       Failure
-                       |                             |
-                  Published                  Exponential Retry
-                       |                             |
-                       +-------- History / Stats ---+
+POST /publish/{draft_id}/multi-image
 ```
 
-### Scheduling
+Example:
 
-Only `approved` drafts can be scheduled. Each schedule stores the provider, UTC execution time, attempt limit, current state, and last error.
+```json
+{
+  "provider": "linkedin",
+  "image_paths": [
+    "/path/to/slide-1.jpg",
+    "/path/to/slide-2.jpg",
+    "/path/to/slide-3.jpg"
+  ]
+}
+```
 
-Supported schedule states:
+CLI usage accepts `--media-path` multiple times:
 
-- `scheduled`
-- `running`
-- `retrying`
-- `published`
-- `failed`
-- `cancelled`
+```bash
+python -m app.cli publish --draft-id 1 --provider linkedin --media-type multi_image \
+  --media-path /path/to/slide-1.jpg \
+  --media-path /path/to/slide-2.jpg \
+  --media-path /path/to/slide-3.jpg
+```
 
-The worker is intentionally cron-friendly. A shared-hosting cron job can call `python -m app.cli worker` every minute, or an external scheduler can call `POST /worker/run`.
-
-### Retry handling
-
-Failed publishing attempts are retried with exponential backoff. Defaults are 60 seconds, then 120, 240, and so on, capped at 1 hour. Each schedule has a maximum attempt count, defaulting to 3.
-
-### Idempotency
-
-If a provider already has a successful publishing attempt for the same draft, a later publish or worker retry returns the stored remote ID instead of creating another post. This protects against the common case where the remote API succeeds but the local status update is interrupted.
-
-### Publishing history and stats
-
-Phase 5 exposes publishing attempts and aggregate operational statistics through both the API and CLI.
-
-### Phase 6C.1 — LinkedIn image upload
-
-LinkedIn image publishing follows the current Images API lifecycle:
-
-1. `POST /rest/images?action=initializeUpload` with the configured author as owner.
-2. `PUT` the local JPEG, PNG, or GIF bytes to LinkedIn's returned upload URL.
-3. Poll `GET /rest/images/{imageUrn}` until the asset reaches `AVAILABLE`.
-4. Create the LinkedIn post with the resulting image URN.
-
-`PROCESSING_FAILED` is treated as a permanent publishing error. Temporary HTTP/network failures remain retryable. Image readiness polling is bounded by `LINKEDIN_MEDIA_POLL_ATTEMPTS` and `LINKEDIN_MEDIA_POLL_SECONDS`.
-
-Phase 6C supports one image per LinkedIn post.
-
-### Phase 6D — LinkedIn document publishing
-
-Approved drafts can also publish a native LinkedIn document. The implementation uses the current Documents API lifecycle:
-
-1. `POST /rest/documents?action=initializeUpload` with the configured author as owner.
-2. `PUT` the local PDF, DOC, DOCX, PPT, or PPTX bytes to the returned upload URL.
-3. Poll the document resource until its status is `AVAILABLE`.
-4. Create the LinkedIn post with `content.media.id = urn:li:document:*` and a required document title.
-
-The same atomic publish claim, audit trail, retry classification, and idempotency behavior used by text/image publishing is retained.
-
-## Lightweight API protection
-
-Set `INTERNAL_API_KEY` in production. When configured, all mutation and operational endpoints require the same value in the `X-API-Key` header. `/health` remains public. Development keeps the key optional for local use.
+The existing atomic publish claim, approval requirement, audit trail, retry classification, and idempotency behavior are retained.
 
 ## Configuration
 
@@ -98,6 +75,7 @@ LINKEDIN_MEDIA_POLL_SECONDS=1
 RETRY_BASE_SECONDS=60
 RETRY_MAX_SECONDS=3600
 WORKER_BATCH_SIZE=10
+WORKER_POLL_SECONDS=60
 ```
 
 Never commit real credentials.
@@ -118,34 +96,55 @@ python -m app.cli approve --draft-id 1
 python -m app.cli publish --draft-id 1 --provider linkedin
 ```
 
-Schedule an approved draft:
+## Production deployment
+
+Phase 6I adds a production container and a two-service Compose deployment: one API container and one continuous scheduling worker. The worker polls due schedules and shares the same persistent SQLite and media volumes as the API. Compose named volumes are used so database/media data survive container recreation. citeturn0search2
+
+Build and start:
 
 ```bash
-python -m app.cli schedule --draft-id 1 --provider linkedin --scheduled-for 2026-09-11T10:00:00+00:00 --max-attempts 3
-python -m app.cli worker --limit 10
-python -m app.cli history --provider linkedin
-python -m app.cli stats
+cp .env.example .env
+# Set APP_ENV=production, INTERNAL_API_KEY, GEMINI_API_KEY,
+# LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN in .env.
+docker compose build
+docker compose up -d
 ```
 
-For a document post, the API endpoint is:
+Check service state and logs:
 
-```text
-POST /publish/{draft_id}/document
+```bash
+docker compose ps
+docker compose logs -f api
+docker compose logs -f worker
 ```
 
-with JSON such as:
+The API container exposes port `8000` and has a Docker healthcheck against `/health`. Docker healthchecks provide an explicit container health state independent of the application process state. citeturn0search3
 
-```json
-{
-  "provider": "linkedin",
-  "document_path": "/path/to/guide.pdf"
-}
+The worker uses:
+
+```bash
+python -m app.cli worker --loop
 ```
+
+and defaults to polling every 60 seconds through `WORKER_POLL_SECONDS`. It handles SIGTERM/SIGINT for graceful shutdown and keeps polling after an isolated worker-cycle exception.
+
+### Persistent media
+
+Scheduled media paths must be accessible to both API and worker containers. Store shared media under the mounted `/app/media` volume when using the supplied Compose deployment. The API and worker both mount the same named media volume.
+
+### Secrets
+
+The repository does not contain real credentials. The Compose deployment reads runtime configuration from `.env`; Docker documents `env_file` as a supported way to provide environment variables to services. For higher-security production environments, use the platform's secret-management facility rather than committing secrets to source control. citeturn0search1
+
+### Deployment limitation
+
+This release intentionally keeps SQLite and a single worker. Do not horizontally scale the API/worker pair against the same SQLite database. A future PostgreSQL migration can remove this deployment constraint if multi-instance scaling becomes necessary.
 
 ## API
 
 ```text
 GET  /health
+GET  /ready
 POST /research/run
 POST /analysis/run?limit=25
 POST /content/generate?limit=10
@@ -153,7 +152,9 @@ GET  /approval/queue?status=pending_approval&limit=25
 POST /approval/{draft_id}
 POST /publish/{draft_id}?provider=linkedin
 POST /publish/{draft_id}/image
+POST /publish/{draft_id}/multi-image
 POST /publish/{draft_id}/document
+POST /publish/{draft_id}/video
 POST /schedule/{draft_id}
 GET  /schedules?status=scheduled&limit=50
 DELETE /schedule/{schedule_id}
@@ -161,6 +162,10 @@ POST /worker/run?limit=10
 GET  /publishing/history?provider=linkedin&limit=50
 GET  /publishing/stats
 ```
+
+## Lightweight API protection
+
+Set `INTERNAL_API_KEY` in production. When configured, mutation and operational endpoints require the value in the `X-API-Key` header. `/health` remains public.
 
 ## Architecture
 

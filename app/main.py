@@ -8,11 +8,12 @@ from .config import get_settings
 from .content import ContentGenerationError, generate_content
 from .publish_service import publish_draft
 from .publishing import PublishingError
+from .readiness import check_readiness
 from .research.runner import run_research
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
-app = FastAPI(title="AI Social Agent", version="0.7.0")
+app = FastAPI(title="AI Social Agent", version="1.0.0")
 
 class ApprovalRequest(BaseModel):
     action: str = Field(pattern="^(approved|rejected)$")
@@ -22,25 +23,43 @@ class ScheduleRequest(BaseModel):
     provider: str = "linkedin"
     scheduled_for: str
     max_attempts: int = Field(default=3, ge=1, le=10)
+    media_type: str = Field(default="none", pattern="^(none|image|document|video|multi_image)$")
+    media_paths: list[str] = Field(default_factory=list, max_length=20)
 
 class MediaPublishRequest(BaseModel):
     provider: str = "linkedin"
     image_path: str = Field(min_length=1)
 
+class MultiImagePublishRequest(BaseModel):
+    provider: str = "linkedin"
+    image_paths: list[str] = Field(min_length=2, max_length=20)
+
 class DocumentPublishRequest(BaseModel):
     provider: str = "linkedin"
     document_path: str = Field(min_length=1)
 
+class VideoPublishRequest(BaseModel):
+    provider: str = "linkedin"
+    video_path: str = Field(min_length=1)
+
 def _authorize(x_api_key: str | None) -> None:
     expected = get_settings().internal_api_key
-    if expected and x_api_key != expected: raise HTTPException(status_code=401, detail="invalid API key")
+    if expected and x_api_key != expected:
+        raise HTTPException(status_code=401, detail="invalid API key")
 
 @app.get("/health")
-def health() -> dict[str, str]: return {"status": "ok", "service": "ai-social-agent"}
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "ai-social-agent"}
+
+@app.get("/ready")
+def ready(x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    return check_readiness(get_settings())
 
 @app.post("/research/run")
 def research_run(x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key); result = run_research(get_settings())
+    _authorize(x_api_key)
+    result = run_research(get_settings())
     return {"discovered": result.discovered, "saved": result.saved, "duplicates": result.duplicates, "failed_sources": result.failed_sources}
 
 @app.post("/analysis/run")
@@ -84,16 +103,28 @@ def publish_image(draft_id: int, request: MediaPublishRequest, x_api_key: str | 
     try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.image_path], media_type="image")
     except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+@app.post("/publish/{draft_id}/multi-image")
+def publish_multi_image(draft_id: int, request: MultiImagePublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=request.image_paths, media_type="multi_image")
+    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 @app.post("/publish/{draft_id}/document")
 def publish_document(draft_id: int, request: DocumentPublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key)
     try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.document_path], media_type="document")
     except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+@app.post("/publish/{draft_id}/video")
+def publish_video(draft_id: int, request: VideoPublishRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key)
+    try: return publish_draft(get_settings(), draft_id, request.provider, media_paths=[request.video_path], media_type="video")
+    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 @app.post("/schedule/{draft_id}")
 def schedule(draft_id: int, request: ScheduleRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key)
-    try: return schedule_draft(get_settings(), draft_id, request.provider, request.scheduled_for, request.max_attempts)
+    try: return schedule_draft(get_settings(), draft_id, request.provider, request.scheduled_for, request.max_attempts, request.media_type, request.media_paths)
     except (ValueError, PublishingError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.get("/schedules")
@@ -110,7 +141,8 @@ def schedule_cancel(schedule_id: int, x_api_key: str | None = Header(default=Non
 
 @app.post("/worker/run")
 def worker_run(limit: int | None = None, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key); batch = limit or get_settings().worker_batch_size
+    _authorize(x_api_key)
+    batch = limit or get_settings().worker_batch_size
     if not 1 <= batch <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
     return run_due_schedules(get_settings(), limit=batch)
 
@@ -122,4 +154,5 @@ def history(provider: str | None = None, limit: int = 50, x_api_key: str | None 
 
 @app.get("/publishing/stats")
 def stats(x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key); return publishing_stats(get_settings().database_url)
+    _authorize(x_api_key)
+    return publishing_stats(get_settings().database_url)
