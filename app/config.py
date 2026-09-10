@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     retry_base_seconds: int = 60
     retry_max_seconds: int = 3600
     worker_batch_size: int = 10
+    worker_poll_seconds: float = 60.0
 
     @property
     def rss_feed_list(self) -> list[str]:
