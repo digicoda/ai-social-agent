@@ -59,7 +59,7 @@ Phase 5 exposes publishing attempts and aggregate operational statistics through
 
 ### Phase 6C.1 — LinkedIn image upload
 
-LinkedIn image publishing now follows the current Images API lifecycle rather than treating `/rest/images` as a direct binary-upload endpoint:
+LinkedIn image publishing follows the current Images API lifecycle:
 
 1. `POST /rest/images?action=initializeUpload` with the configured author as owner.
 2. `PUT` the local JPEG, PNG, or GIF bytes to LinkedIn's returned upload URL.
@@ -68,9 +68,20 @@ LinkedIn image publishing now follows the current Images API lifecycle rather th
 
 `PROCESSING_FAILED` is treated as a permanent publishing error. Temporary HTTP/network failures remain retryable. Image readiness polling is bounded by `LINKEDIN_MEDIA_POLL_ATTEMPTS` and `LINKEDIN_MEDIA_POLL_SECONDS`.
 
-Phase 6C currently supports one image per LinkedIn post.
+Phase 6C supports one image per LinkedIn post.
 
-### Lightweight API protection
+### Phase 6D — LinkedIn document publishing
+
+Approved drafts can also publish a native LinkedIn document. The implementation uses the current Documents API lifecycle:
+
+1. `POST /rest/documents?action=initializeUpload` with the configured author as owner.
+2. `PUT` the local PDF, DOC, DOCX, PPT, or PPTX bytes to the returned upload URL.
+3. Poll the document resource until its status is `AVAILABLE`.
+4. Create the LinkedIn post with `content.media.id = urn:li:document:*` and a required document title.
+
+The same atomic publish claim, audit trail, retry classification, and idempotency behavior used by text/image publishing is retained.
+
+## Lightweight API protection
 
 Set `INTERNAL_API_KEY` in production. When configured, all mutation and operational endpoints require the same value in the `X-API-Key` header. `/health` remains public. Development keeps the key optional for local use.
 
@@ -116,6 +127,21 @@ python -m app.cli history --provider linkedin
 python -m app.cli stats
 ```
 
+For a document post, the API endpoint is:
+
+```text
+POST /publish/{draft_id}/document
+```
+
+with JSON such as:
+
+```json
+{
+  "provider": "linkedin",
+  "document_path": "/path/to/guide.pdf"
+}
+```
+
 ## API
 
 ```text
@@ -126,6 +152,8 @@ POST /content/generate?limit=10
 GET  /approval/queue?status=pending_approval&limit=25
 POST /approval/{draft_id}
 POST /publish/{draft_id}?provider=linkedin
+POST /publish/{draft_id}/image
+POST /publish/{draft_id}/document
 POST /schedule/{draft_id}
 GET  /schedules?status=scheduled&limit=50
 DELETE /schedule/{schedule_id}
