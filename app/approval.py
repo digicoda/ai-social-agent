@@ -40,6 +40,11 @@ def set_decision(settings: Settings, draft_id: int, action: str, reason: str = "
         raise ValueError("a rejection reason is required")
     connection = connect(settings.database_url)
     try:
+        row = connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
+        if row is None:
+            return False
+        if row["status"] != "pending_approval":
+            raise ValueError("only pending_approval drafts can be approved or rejected")
         return update_draft_status(connection, draft_id, action, reason.strip())
     finally:
         connection.close()
