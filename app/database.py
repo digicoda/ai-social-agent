@@ -62,6 +62,26 @@ CREATE TABLE IF NOT EXISTS problem_cluster_members (
 );
 CREATE INDEX IF NOT EXISTS idx_cluster_members_problem
     ON problem_cluster_members(problem_id);
+
+CREATE TABLE IF NOT EXISTS content_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    problem_id INTEGER NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'generic',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    hashtags TEXT NOT NULL DEFAULT '[]',
+    call_to_action TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending_approval',
+    generation_confidence INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    approved_at TEXT,
+    rejected_at TEXT,
+    rejection_reason TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_content_drafts_status ON content_drafts(status);
+CREATE INDEX IF NOT EXISTS idx_content_drafts_problem ON content_drafts(problem_id);
 """
 
 
@@ -162,3 +182,89 @@ def save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: Pro
         ),
     )
     connection.commit()
+
+
+def get_analysis(connection: sqlite3.Connection, problem_id: int) -> tuple[ProblemAnalysis, str] | None:
+    row = connection.execute(
+        "SELECT pain_point, audience, root_cause, solution_angle, hooks, risks, confidence, decision "
+        "FROM problem_analyses WHERE problem_id = ?",
+        (problem_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return (
+        ProblemAnalysis(
+            pain_point=row["pain_point"],
+            audience=row["audience"],
+            root_cause=row["root_cause"],
+            solution_angle=row["solution_angle"],
+            hooks=json.loads(row["hooks"]),
+            risks=json.loads(row["risks"]),
+            confidence=int(row["confidence"]),
+        ),
+        row["decision"],
+    )
+
+
+def save_draft(
+    connection: sqlite3.Connection,
+    problem_id: int,
+    platform: str,
+    title: str,
+    body: str,
+    hashtags: list[str],
+    call_to_action: str,
+    generation_confidence: int,
+) -> int:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = connection.execute(
+        """INSERT INTO content_drafts
+        (problem_id, platform, title, body, hashtags, call_to_action, status,
+         generation_confidence, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, ?)""",
+        (problem_id, platform, title, body, json.dumps(hashtags, ensure_ascii=False),
+         call_to_action, max(0, min(100, generation_confidence)), now, now),
+    )
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
+def list_drafts(connection: sqlite3.Connection, status: str | None = None, limit: int = 25) -> list[sqlite3.Row]:
+    if status:
+        return connection.execute(
+            "SELECT * FROM content_drafts WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+            (status, limit),
+        ).fetchall()
+    return connection.execute(
+        "SELECT * FROM content_drafts ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
+def update_draft_status(
+    connection: sqlite3.Connection,
+    draft_id: int,
+    status: str,
+    rejection_reason: str = "",
+) -> bool:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    timestamp_column = {
+        "approved": "approved_at",
+        "rejected": "rejected_at",
+    }.get(status)
+    if timestamp_column:
+        cursor = connection.execute(
+            f"UPDATE content_drafts SET status = ?, updated_at = ?, {timestamp_column} = ?, rejection_reason = ? "
+            "WHERE id = ?",
+            (status, now, now, rejection_reason, draft_id),
+        )
+    else:
+        cursor = connection.execute(
+            "UPDATE content_drafts SET status = ?, updated_at = ?, rejection_reason = ? WHERE id = ?",
+            (status, now, rejection_reason, draft_id),
+        )
+    connection.commit()
+    return cursor.rowcount == 1
