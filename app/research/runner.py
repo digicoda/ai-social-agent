@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from ..config import Settings
 from ..database import connect, save_problem
 from ..schemas import Problem
+from ..scoring import score_problem
 from .github import fetch_github_issues
 from .reddit import fetch_reddit
 from .rss import fetch_rss
@@ -36,6 +37,7 @@ def run_research(settings: Settings) -> ResearchResult:
                 problems: list[Problem] = fetcher()
                 result.discovered += len(problems)
                 for problem in problems:
+                    problem.score = score_problem(problem)
                     if save_problem(connection, problem):
                         result.saved += 1
                     else:
