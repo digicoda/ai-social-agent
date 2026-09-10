@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = "sqlite:///./data/ai_social_agent.db"
+
+    # AI provider
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_timeout_seconds: float = 30.0
+
+    # Research sources
     reddit_user_agent: str = "ai-social-agent/0.1"
     rss_feeds: str = "https://hnrss.org/frontpage"
     research_timeout_seconds: float = 15.0
