@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "development"
-    database_url: str = "sqlite:///data/ai_social_agent.db"
+    database_url: str = "sqlite:///./data/ai_social_agent.db"
     reddit_user_agent: str = "ai-social-agent/0.1"
     rss_feeds: str = "https://hnrss.org/frontpage"
     research_timeout_seconds: float = 15.0
