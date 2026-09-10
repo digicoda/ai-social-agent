@@ -39,30 +39,23 @@ class LinkedInPublisher(Publisher):
         commentary = body.strip()
         if hashtags:
             commentary += "\n\n" + " ".join(f"#{tag.lstrip('#')}" for tag in hashtags)
+        if not commentary:
+            raise PublishingError("cannot publish an empty post")
         payload = {
             "author": self.author,
             "commentary": commentary,
             "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": [],
-            },
+            "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []},
             "lifecycleState": "PUBLISHED",
             "isReshareDisabledByAuthor": False,
         }
         try:
-            response = httpx.post(
-                self.endpoint,
-                headers={
-                    "Authorization": f"Bearer {self.token}",
-                    "Linkedin-Version": self.version,
-                    "X-Restli-Protocol-Version": "2.0.0",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self.timeout,
-            )
+            response = httpx.post(self.endpoint, headers={
+                "Authorization": f"Bearer {self.token}",
+                "Linkedin-Version": self.version,
+                "X-Restli-Protocol-Version": "2.0.0",
+                "Content-Type": "application/json",
+            }, json=payload, timeout=self.timeout)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise PublishingError(f"LinkedIn publish failed: {exc}") from exc
