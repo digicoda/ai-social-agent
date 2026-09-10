@@ -2,88 +2,76 @@
 
 Automated technical-content research and social publishing system designed for lightweight shared hosting.
 
-## Phase 1 — Research Engine
+## Phases 1–3
 
-The first implementation collects real technical problems from:
+The project researches technical problems, deduplicates and scores them, analyzes eligible problems with Gemini, clusters related issues, generates educational content, and stores drafts in a human approval queue.
 
-- GitHub Issues
-- Reddit
-- RSS feeds (default: Hacker News RSS)
-- Stack Overflow
+## Phase 4 — Social Publishing
 
-Each source is normalized into the same `Problem` model, stored in SQLite, and deduplicated by both source/external ID and normalized title fingerprint.
+Phase 4 adds a provider-based publishing layer. The first production provider is LinkedIn text-post publishing through the current LinkedIn Posts API. LinkedIn's current API uses the `/rest/posts` endpoint, Bearer authorization, `Linkedin-Version`, and `X-Restli-Protocol-Version: 2.0.0`; successful creation returns the post identifier in `x-restli-id`. citeturn0search0turn0search8
 
-## Phase 2 — AI Analysis
-
-Phase 2 adds a Gemini-backed analysis layer after research and scoring.
-
-The pipeline is:
+The safety flow is intentionally strict:
 
 ```text
-Sources -> Normalize -> Cross-source dedup -> SQLite -> Deterministic score -> Gemini analysis -> Decision -> Clusters
+pending_approval -> approved -> publish -> published
+                         \
+                          -> publishing_attempts (success/failure audit)
 ```
 
-Decision thresholds:
+A draft that is not explicitly `approved` cannot be published. Successful and failed attempts are recorded in SQLite, including the provider and remote post ID when available. Publishing credentials are read only from environment variables and are never stored in SQLite.
 
-- `85–100`: auto-publish candidate
-- `70–84`: approval queue
-- `<70`: discard
-
-Gemini returns structured analysis containing the pain point, audience, root cause, solution angle, three hooks, risks, and confidence. The API key is loaded from `GEMINI_API_KEY` and sent to Gemini using the `x-goog-api-key` request header; it is never stored in SQLite.
-
-### Cross-source deduplication
-
-Phase 1's exact fingerprint remains the database safety net. Phase 2 adds deterministic fuzzy matching across different sources using normalized technical tokens and title/body Jaccard similarity. This catches the same underlying issue when GitHub, Reddit, Stack Overflow, or RSS describe it with slightly different wording.
-
-### Problem clustering
-
-Phase 2 also groups related problems into SQLite-backed clusters. Clustering is deterministic and local, so it does not require embeddings or an additional AI request. The highest-scoring problem becomes the cluster representative, and related problems are assigned to it using a similarity threshold.
-
-## Phase 3 — Content Generation & Approval
-
-Phase 3 turns eligible analyzed problems into reviewable content drafts. Gemini generates a platform-neutral educational draft with a title, body, hashtags, call-to-action, and generation confidence. Discarded problems are never generated, and existing non-rejected drafts are not duplicated on repeat runs.
-
-Drafts are stored in SQLite with an explicit lifecycle:
+### LinkedIn configuration
 
 ```text
-pending_approval -> approved
-                  -> rejected
+LINKEDIN_ACCESS_TOKEN=
+LINKEDIN_AUTHOR_URN=urn:li:person:<id>
+# or urn:li:organization:<id>
+LINKEDIN_API_VERSION=202603
+PUBLISHING_TIMEOUT_SECONDS=20
 ```
 
-Rejections require a reason so a future regeneration/editing workflow can use that feedback. Publishing is still intentionally disabled in Phase 3: an approved draft is only an approved artifact and is not sent to any social network.
+The LinkedIn Posts API supports text-only organic posts for both members and organizations, subject to the permissions of the authenticated account. citeturn0search0
 
 ### Run locally
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
 python -m app.cli research
 python -m app.cli analyze --limit 25
 python -m app.cli generate --limit 10
 python -m app.cli queue --limit 25
 python -m app.cli approve --draft-id 1
-python -m app.cli reject --draft-id 2 --reason "Needs a clearer example"
+python -m app.cli publish --draft-id 1 --provider linkedin
 ```
 
 ### API
 
-```bash
-uvicorn app.main:app --reload
+```text
+POST /research/run
+POST /analysis/run?limit=25
+POST /content/generate?limit=10
+GET  /approval/queue?status=pending_approval&limit=25
+POST /approval/{draft_id}
+POST /publish/{draft_id}?provider=linkedin
 ```
 
-- `GET /health`
-- `POST /research/run`
-- `POST /analysis/run?limit=25`
-- `POST /content/generate?limit=10`
-- `GET /approval/queue?status=pending_approval&limit=25`
-- `POST /approval/{draft_id}` with `{"action":"approved"}` or `{"action":"rejected","reason":"..."}`
+Publishing is deliberately provider-based so additional networks can be added without changing the research, analysis, content, or approval layers.
 
 ## Architecture
 
 ```text
-Sources -> Normalized Problems -> Deduplication -> SQLite -> Scoring -> AI Analysis -> Clustering -> Content -> Approval -> Publishing
+Sources -> Normalize -> Dedup -> SQLite -> Score -> AI Analysis -> Clusters
+                                                     |
+                                                     v
+                                               Content Draft
+                                                     |
+                                                     v
+                                                Approval Queue
+                                                     |
+                                                     v
+                                                  Publisher
+                                                     |
+                                                     v
+                                                 Social API
 ```
 
-The system avoids local LLMs, Redis, Elasticsearch, Temporal, and other heavy infrastructure so it can remain suitable for shared hosting.
+The system remains lightweight and SQLite-friendly for shared hosting.
