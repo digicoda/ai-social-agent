@@ -17,11 +17,13 @@ from .publish_service import publish_draft
 from .publishing import PublishingError
 from .readiness import check_readiness
 from .research.runner import run_research
+from .research.search_api import router as research_search_router
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
 
 app = FastAPI(title="AI Social Agent", version="1.2.2")
+app.include_router(research_search_router)
 
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret or "development-only-session-secret", session_cookie="ai_social_session", same_site="lax", https_only=get_settings().app_env.lower() == "production")
 
@@ -90,11 +92,9 @@ def system_test_provider(provider: str, request: Request, x_api_key: str | None 
 @app.post("/system/update")
 def system_update(request: Request, x_api_key: str | None = Header(default=None)) -> dict[str, str]:
     _authorize(x_api_key, request)
-    if os.name != "nt":
-        raise HTTPException(status_code=400, detail="Automatic Windows updates are available only in the Windows Desktop edition.")
+    if os.name != "nt": raise HTTPException(status_code=400, detail="Automatic Windows updates are available only in the Windows Desktop edition.")
     script = Path(__file__).resolve().parents[1] / "windows" / "update-agent.ps1"
-    if not script.exists():
-        raise HTTPException(status_code=500, detail="Windows updater is missing from this installation.")
+    if not script.exists(): raise HTTPException(status_code=500, detail="Windows updater is missing from this installation.")
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
     subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], cwd=str(script.parent.parent), creationflags=creationflags, close_fds=True)
     return {"status": "started", "message": "Update started. The service will restart automatically after installation."}
