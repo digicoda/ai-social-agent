@@ -26,6 +26,9 @@ def decision_for_score(score: int) -> str:
 
 
 def run_analysis(settings: Settings, limit: int = 25) -> AnalysisResult:
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+
     result = AnalysisResult()
     client = GeminiClient(
         settings.gemini_api_key,
@@ -34,7 +37,7 @@ def run_analysis(settings: Settings, limit: int = 25) -> AnalysisResult:
     )
     connection = connect(settings.database_url)
     try:
-        for problem_id, problem in list_problems(connection, limit=limit):
+        for problem_id, problem in list_problems(connection, limit=limit, unanalyzed_only=True):
             try:
                 analysis: ProblemAnalysis = client.analyze(problem)
                 decision = decision_for_score(problem.score)
