@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'SilentlyContinue'
-$Root = Split-Path -Parent $PSScriptRoot
-$PidDir = Join-Path $Root 'data\pids'
+$DataRoot = Join-Path $env:ProgramData 'AI Social Agent'
+$PidDir = Join-Path $DataRoot 'pids'
 
 foreach ($name in @('worker.pid','api.pid')) {
     $pidFile = Join-Path $PidDir $name
@@ -10,9 +10,5 @@ foreach ($name in @('worker.pid','api.pid')) {
         Remove-Item $pidFile -Force
     }
 }
-
-Get-Process python -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -like "$Root\.venv\*"
-} | Stop-Process -Force
 
 Write-Host 'AI Social Agent stopped.'
