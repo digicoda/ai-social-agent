@@ -1,89 +1,38 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-
 from .auth import authenticate, create_admin, has_users
 from .config import get_settings
-
 DASHBOARD_DIR = Path(__file__).with_name("dashboard")
-
-
-def _configured() -> bool:
-    return bool(get_settings().session_secret)
-
-
+def _configured() -> bool: return bool(get_settings().session_secret)
 def require_dashboard_session(request: Request) -> None:
-    if not request.session.get("authenticated"):
-        raise HTTPException(status_code=401, detail="dashboard login required")
-
-
+    if not request.session.get("authenticated"): raise HTTPException(status_code=401, detail="dashboard login required")
 def dashboard_login(request: Request, username: str, password: str) -> bool:
     settings = get_settings()
     if not _configured(): return False
     if not has_users(settings.database_url):
         if not create_admin(settings.database_url, username, password): return False
     elif not authenticate(settings.database_url, username, password): return False
-    request.session.clear(); request.session["authenticated"] = True; request.session["role"] = "admin"
-    return True
-
-
+    request.session.clear(); request.session["authenticated"] = True; request.session["role"] = "admin"; return True
 def dashboard_signup(request: Request, username: str, password: str) -> bool:
     if has_users(get_settings().database_url): return False
     return dashboard_login(request, username, password)
-
-
 def dashboard_logout(request: Request) -> RedirectResponse:
     request.session.clear(); return RedirectResponse("/dashboard", status_code=303)
-
-
 def dashboard_page(request: Request) -> HTMLResponse:
     path = DASHBOARD_DIR / "index.html"
     html = path.read_text(encoding="utf-8")
-    settings = get_settings()
-    account_exists = has_users(settings.database_url)
+    settings = get_settings(); account_exists = has_users(settings.database_url)
     html = html.replace("__AUTH_CONFIGURED__", "true" if _configured() else "false")
     html = html.replace("__HAS_ACCOUNT__", "true" if account_exists else "false")
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
-    update_script = '''<script>
-(function(){
-  function installUpdatePanel(){
-    const title=document.getElementById('title'), content=document.getElementById('content');
-    if(!title||!content||title.textContent!=='System'||document.getElementById('softwareUpdatePanel')) return;
-    const panel=document.createElement('div'); panel.id='softwareUpdatePanel'; panel.className='panel';
-    panel.innerHTML='<div class="section-head"><div><h2>Software Update</h2><div class="muted">Windows Desktop updates stop the agent, install the verified release, preserve your data/configuration, restart the service and check health.</div></div><button id="updateAgentBtn" class="btn">Check &amp; Update</button></div><div id="updateAgentStatus" class="help">Use this only on the Windows Desktop edition.</div>';
-    content.appendChild(panel);
-    document.getElementById('updateAgentBtn').onclick=async function(){
-      if(!confirm('Start the AI Social Agent update now? The service will restart during installation.')) return;
-      const b=this, status=document.getElementById('updateAgentStatus'); b.disabled=true; b.textContent='Starting update…'; status.textContent='Preparing update. Keep this dashboard open; the service will restart automatically.';
-      try{const r=await fetch('/system/update',{method:'POST'});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Update could not be started.');status.textContent=d.message||'Update started.';}
-      catch(e){status.textContent=e.message;b.disabled=false;b.textContent='Check & Update';}
-    };
-  }
-  new MutationObserver(installUpdatePanel).observe(document.documentElement,{subtree:true,childList:true});
-  setTimeout(installUpdatePanel,300);
-})();
-</script>'''
+    update_script = '''<script>(function(){function installUpdatePanel(){const title=document.getElementById('title'),content=document.getElementById('content');if(!title||!content||title.textContent!=='System'||document.getElementById('softwareUpdatePanel'))return;const panel=document.createElement('div');panel.id='softwareUpdatePanel';panel.className='panel';panel.innerHTML='<div class="section-head"><div><h2>Software Update</h2><div class="muted">Windows Desktop updates preserve data/configuration and restart the agent.</div></div><button id="updateAgentBtn" class="btn">Check &amp; Update</button></div><div id="updateAgentStatus" class="help">Windows Desktop only.</div>';content.appendChild(panel);document.getElementById('updateAgentBtn').onclick=async function(){if(!confirm('Start the AI Social Agent update now?'))return;const b=this,s=document.getElementById('updateAgentStatus');b.disabled=true;b.textContent='Starting update…';try{const r=await fetch('/system/update',{method:'POST'}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Update could not be started.');s.textContent=d.message||'Update started.'}catch(e){s.textContent=e.message;b.disabled=false;b.textContent='Check & Update'}}}new MutationObserver(installUpdatePanel).observe(document.documentElement,{subtree:true,childList:true});setTimeout(installUpdatePanel,300)})();</script>'''
     html = html.replace("</body>", update_script + "</body>")
+    profile_script = '''<script>(function(){let profiles=[],editing=null;function esc(v){return String(v??'').replace(/[&<>\\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]))}async function loadProfiles(){const r=await fetch('/research/profiles');if(!r.ok)throw new Error('Could not load profiles');profiles=(await r.json()).items||[];renderProfiles()}function renderProfiles(){const c=document.getElementById('content');if(!c||document.getElementById('researchProfiles'))return;const p=document.createElement('div');p.id='researchProfiles';p.className='panel';p.innerHTML='<div class="section-head"><div><h2>Research Profiles</h2><div class="muted">Create separate research/content personas. Only Profile Name and Main Category are required.</div></div><button class="btn" id="newProfile">New profile</button></div><div id="profileList" class="list"></div><div id="profileForm" class="hidden"></div>';c.innerHTML='';c.appendChild(p);drawList()}function drawList(){const l=document.getElementById('profileList');l.innerHTML=profiles.length?profiles.map(x=>'<div class="item"><div class="section-head"><div><strong>'+esc(x.name)+'</strong><div class="muted">'+esc(x.main_category)+' · '+(x.enabled?'Enabled':'Disabled')+' · '+esc((x.posting_times||[]).join(', ')||'No posting time')+'</div></div><div class="row"><button class="btn secondary" onclick="window.editResearchProfile('+x.id+')">Edit</button><button class="btn danger" onclick="window.deleteResearchProfile('+x.id+')">Delete</button></div></div>'+(x.website_url?'<div class="help">Website: '+esc(x.website_url)+'</div>':'')+'</div>').join(''):'<div class="item"><strong>No profiles yet</strong><div class="muted">Create your first profile with a name and main category.</div></div>'}function form(x){const v=x||{name:'',main_category:'',website_url:'',industry:'',audience:'',topics:[],keywords:[],competitors:[],services:[],sources:['github','reddit','stackoverflow','rss'],intents:['problems','questions','trends'],language:'English',tone:'professional',posting_times:['09:00','18:00'],timezone:'UTC',research_mode:'monitoring',research_interval_hours:24,enabled:true,auto_generate:false,auto_publish:false,platforms:['linkedin']};const f=document.getElementById('profileForm');f.classList.remove('hidden');f.innerHTML='<h3>'+(x?'Edit profile':'New profile')+'</h3><div class="grid2"><div><div class="field"><label>Profile Name *</label><input id="pf_name" value="'+esc(v.name)+'"></div><div class="field"><label>Main Category *</label><input id="pf_category" value="'+esc(v.main_category)+'" placeholder="Technology, Food, Education..."></div><div class="field"><label>Website / Service URL</label><input id="pf_url" value="'+esc(v.website_url)+'"></div><div class="field"><label>Industry</label><input id="pf_industry" value="'+esc(v.industry)+'"></div><div class="field"><label>Target Audience</label><input id="pf_audience" value="'+esc(v.audience)+'"></div><div class="field"><label>Topics (comma separated)</label><input id="pf_topics" value="'+esc((v.topics||[]).join(', '))+'"></div><div class="field"><label>Keywords</label><input id="pf_keywords" value="'+esc((v.keywords||[]).join(', '))+'"></div><div class="field"><label>Competitors</label><input id="pf_competitors" value="'+esc((v.competitors||[]).join(', '))+'"></div></div><div><div class="field"><label>Services / Products</label><input id="pf_services" value="'+esc((v.services||[]).join(', '))+'"></div><div class="field"><label>Research Sources</label><input id="pf_sources" value="'+esc((v.sources||[]).join(', '))+'"><div class="help">github, reddit, stackoverflow, rss, web</div></div><div class="field"><label>Research Intents</label><input id="pf_intents" value="'+esc((v.intents||[]).join(', '))+'"></div><div class="field"><label>Language</label><input id="pf_language" value="'+esc(v.language)+'"></div><div class="field"><label>Tone</label><input id="pf_tone" value="'+esc(v.tone)+'"></div><div class="field"><label>Posting Times</label><input id="pf_times" value="'+esc((v.posting_times||[]).join(', '))+'" placeholder="09:00, 18:00"></div><div class="field"><label>Timezone</label><input id="pf_timezone" value="'+esc(v.timezone)+'"></div><div class="field"><label>Research Interval (hours)</label><input id="pf_interval" type="number" min="1" value="'+esc(v.research_interval_hours)+'"></div><div class="row"><label><input id="pf_enabled" type="checkbox" '+(v.enabled?'checked':'')+'> Enabled</label><label><input id="pf_generate" type="checkbox" '+(v.auto_generate?'checked':'')+'> Auto generate</label><label><input id="pf_publish" type="checkbox" '+(v.auto_publish?'checked':'')+'> Auto publish</label></div></div></div><div class="row" style="margin-top:12px"><button class="btn" id="saveProfile">Save profile</button><button class="btn secondary" id="cancelProfile">Cancel</button></div>';document.getElementById('saveProfile').onclick=async()=>{const arr=id=>document.getElementById(id).value.split(',').map(x=>x.trim()).filter(Boolean);const values={name:document.getElementById('pf_name').value.trim(),main_category:document.getElementById('pf_category').value.trim(),website_url:document.getElementById('pf_url').value.trim(),industry:document.getElementById('pf_industry').value.trim(),audience:document.getElementById('pf_audience').value.trim(),topics:arr('pf_topics'),keywords:arr('pf_keywords'),competitors:arr('pf_competitors'),services:arr('pf_services'),sources:arr('pf_sources'),intents:arr('pf_intents'),language:document.getElementById('pf_language').value.trim()||'English',tone:document.getElementById('pf_tone').value.trim()||'professional',posting_times:arr('pf_times'),timezone:document.getElementById('pf_timezone').value.trim()||'UTC',research_interval_hours:Number(document.getElementById('pf_interval').value)||24,enabled:document.getElementById('pf_enabled').checked,auto_generate:document.getElementById('pf_generate').checked,auto_publish:document.getElementById('pf_publish').checked,platforms:['linkedin']};if(!values.name||!values.main_category)return toast('Profile Name and Main Category are required');const url=editing?'/research/profiles/'+editing:'/research/profiles';const r=await fetch(url,{method:editing?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})});if(!r.ok){const d=await r.json().catch(()=>({}));return toast(d.detail||'Could not save profile')}editing=null;await loadProfiles()};document.getElementById('cancelProfile').onclick=()=>{editing=null;document.getElementById('profileForm').classList.add('hidden')}}window.editResearchProfile=id=>{editing=id;form(profiles.find(x=>x.id===id))};window.deleteResearchProfile=async id=>{if(!confirm('Delete this research profile?'))return;const r=await fetch('/research/profiles/'+id,{method:'DELETE'});if(r.ok)loadProfiles();else toast('Could not delete profile')};window.__loadResearchProfiles=loadProfiles;document.addEventListener('click',e=>{if(e.target.id==='newProfile')form()});new MutationObserver(()=>{const t=document.getElementById('title');if(t&&t.textContent==='Research'&&!document.getElementById('researchProfiles'))loadProfiles().catch(err=>toast(err.message))}).observe(document.documentElement,{subtree:true,childList:true});})();</script>'''
+    html = html.replace("</body>", profile_script + "</body>")
     if not account_exists:
-        html = html.replace("</body>", '''<script>
-(function(){
- const form=document.getElementById('loginForm'); if(!form)return;
- form.onsubmit=async function(e){e.preventDefault();const p=document.getElementById('password').value;
-  if(p!==document.getElementById('confirmPassword').value)return setAuthMode(true,'Passwords do not match.');
-  if(p.length<8)return setAuthMode(true,'Password must be at least 8 characters.');
-  const b=document.getElementById('authSubmit');b.disabled=true;
-  try{const r=await fetch('/dashboard/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:p})});
-   if(r.ok){document.getElementById('password').value='';document.getElementById('confirmPassword').value='';setAuthMode(false,'Account created successfully. Please sign in.');}
-   else{const d=await r.json().catch(()=>({}));setAuthMode(true,d.detail||'Account could not be created.');}
-  }finally{b.disabled=false;}
- };
-})();
-</script></body>''')
+        html = html.replace("</body>", '''<script>(function(){const form=document.getElementById('loginForm');if(!form)return;form.onsubmit=async function(e){e.preventDefault();const p=document.getElementById('password').value;if(p!==document.getElementById('confirmPassword').value)return setAuthMode(true,'Passwords do not match.');if(p.length<8)return setAuthMode(true,'Password must be at least 8 characters.');const b=document.getElementById('authSubmit');b.disabled=true;try{const r=await fetch('/dashboard/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:p})});if(r.ok){document.getElementById('password').value='';document.getElementById('confirmPassword').value='';setAuthMode(false,'Account created successfully. Please sign in.');}else{const d=await r.json().catch(()=>({}));setAuthMode(true,d.detail||'Account could not be created.')}}finally{b.disabled=false}}})();</script></body>''')
     else:
-        html = html.replace("</body>", '''<script>
-(function(){const b=document.getElementById('signUpTab');if(b)b.style.display='none';})();
-</script></body>''')
+        html = html.replace("</body>", '''<script>(function(){const b=document.getElementById('signUpTab');if(b)b.style.display='none';})();</script></body>''')
     return HTMLResponse(html)
