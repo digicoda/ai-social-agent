@@ -56,18 +56,12 @@ def dashboard_page(request: Request) -> HTMLResponse:
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
 
     # Defensive cleanup for upgrades from builds that accidentally rendered two
-    # authentication tab groups. Keep exactly one group even if a stale page is
-    # cached by the browser or an older dashboard template is still in memory.
+    # authentication tab groups. Keep exactly one group if an older template is
+    # still present in a cached or previously packaged dashboard.
     auth_fix_script = '''<script>
 (function(){
   const tabs=document.querySelectorAll('.auth-tabs');
   for(let i=1;i<tabs.length;i++) tabs[i].remove();
-  const signIn=document.getElementById('signInTab');
-  const signUp=document.getElementById('signUpTab');
-  if(signIn&&signUp){
-    signIn.classList.remove('active-mode');
-    signUp.classList.remove('active-mode');
-  }
 })();
 </script>'''
 
