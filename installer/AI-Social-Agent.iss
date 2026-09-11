@@ -1,8 +1,8 @@
 ; AI Social Agent Windows installer
-; Build with Inno Setup on a Windows build machine.
+; Existing installations are upgraded in place. ProgramData/config/database are preserved.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.1.0"
+#define AppVersion "1.2.0"
 #define AppPublisher "DigiCoda"
 
 [Setup]
@@ -39,6 +39,7 @@ Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Age
 Name: "{group}\Uninstall AI Social Agent"; Filename: "{uninstallexe}"
 
 [Run]
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\stop-agent.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated skipifsilent
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\install-agent.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\show-credentials.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated postinstall skipifsilent
 
