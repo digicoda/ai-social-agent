@@ -1,6 +1,7 @@
 ; AI Social Agent Windows installer
 ; In-place upgrade installer: stops the running agent, replaces application
 ; files, and preserves persistent ProgramData data/config/logs/media.
+; v1.2.2 verified build marker.
 
 #define AppName "AI Social Agent"
 #define AppVersion "1.2.2"
