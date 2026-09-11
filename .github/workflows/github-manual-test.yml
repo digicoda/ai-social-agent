@@ -76,24 +76,31 @@ jobs:
         id: tunnel
         shell: bash
         run: |
+          docker pull cloudflare/cloudflared:latest
           docker run -d --rm --name ai-social-agent-tunnel --network host \
             cloudflare/cloudflared:latest \
-            tunnel --no-autoupdate --url http://127.0.0.1:8000 \
-            > /tmp/cloudflared.log 2>&1
+            tunnel --no-autoupdate --url http://127.0.0.1:8000
 
-          for attempt in $(seq 1 30); do
+          : > /tmp/cloudflared.log
+          for attempt in $(seq 1 45); do
+            docker logs ai-social-agent-tunnel > /tmp/cloudflared.log 2>&1 || true
             url="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1 || true)"
             if [ -n "$url" ]; then
               echo "url=$url" >> "$GITHUB_OUTPUT"
-              break
+              echo "Temporary tunnel ready: $url"
+              exit 0
+            fi
+            if ! docker inspect -f '{{.State.Running}}' ai-social-agent-tunnel 2>/dev/null | grep -q true; then
+              echo 'cloudflared exited before publishing a Quick Tunnel URL.'
+              cat /tmp/cloudflared.log
+              exit 1
             fi
             sleep 2
           done
 
-          if ! grep -q 'trycloudflare.com' /tmp/cloudflared.log; then
-            cat /tmp/cloudflared.log
-            exit 1
-          fi
+          echo 'Timed out waiting for the Quick Tunnel URL.'
+          cat /tmp/cloudflared.log
+          exit 1
 
       - name: Publish test access details
         shell: bash
@@ -115,9 +122,6 @@ jobs:
             echo '- Use the dashboard to test login, research, analysis, content generation, approval, scheduling, and worker behavior.'
             echo '- Do not treat this URL as a production endpoint.'
             echo '- The public tunnel URL is temporary and changes on every run.'
-            echo
-            echo '## API test key'
-            echo "The protected API key is available only inside this workflow as INTERNAL_API_KEY=${INTERNAL_API_KEY}."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep environment available for manual testing
@@ -131,11 +135,11 @@ jobs:
         run: |
           docker compose ps || true
           docker compose logs --no-color > manual-test-compose.log 2>&1 || true
-          cat /tmp/cloudflared.log > manual-test-tunnel.log 2>&1 || true
+          docker logs ai-social-agent-tunnel > manual-test-tunnel.log 2>&1 || true
 
       - name: Upload temporary test logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: github-manual-test-logs
           path: |
