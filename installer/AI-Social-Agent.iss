@@ -2,7 +2,7 @@
 ; Existing installations are upgraded in place. ProgramData/config/database are preserved.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.2.0"
+#define AppVersion "1.2.1"
 #define AppPublisher "DigiCoda"
 
 [Setup]

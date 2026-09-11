@@ -13,7 +13,7 @@ services:
       - app-data:/app/data
       - app-media:/app/media
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=3)); assert '/system/settings' in d['paths'] and '/dashboard/login' in d['paths']"]
       interval: 30s
       timeout: 5s
       retries: 3
