@@ -34,7 +34,6 @@ if (-not (Test-Path $VenvPython)) {
     & $Python -m venv $VenvPath
 }
 
-# Reuse the existing virtual environment and dependencies when requirements.txt has not changed.
 $DepsMarker = Join-Path $VenvPath '.requirements-installed'
 $Requirements = Join-Path $Root 'requirements.txt'
 $RequirementsHash = (Get-FileHash $Requirements -Algorithm SHA256).Hash
@@ -47,13 +46,12 @@ if ($InstalledHash -ne $RequirementsHash) {
 }
 
 if (-not (Test-Path $ConfigFile)) {
-    $password = 'admin-' + ([guid]::NewGuid().ToString('N'))
     $session = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
     $apiKey = [guid]::NewGuid().ToString('N')
     @"
 APP_ENV=development
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=$password
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
 SESSION_SECRET=$session
 INTERNAL_API_KEY=$apiKey
 DATABASE_URL=sqlite:///C:/ProgramData/AI Social Agent/data/ai_social_agent.db
@@ -62,19 +60,11 @@ LINKEDIN_ACCESS_TOKEN=
 LINKEDIN_AUTHOR_URN=
 WORKER_POLL_SECONDS=5
 "@ | Set-Content -Encoding UTF8 $ConfigFile
-
-    Write-Host ''
-    Write-Host 'FIRST RUN ADMIN CREDENTIALS' -ForegroundColor Yellow
-    Write-Host 'Username: admin'
-    Write-Host "Password: $password"
-    Write-Host 'Save these credentials somewhere safe.'
+    Write-Host 'First-run account setup is handled in the AI Social Agent dashboard.' -ForegroundColor Yellow
 }
 
-# Start the local API and worker silently. The installer itself is responsible for the GUI credential screen.
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'windows\start-agent.ps1')
-
 if ($LASTEXITCODE -ne 0) {
     throw 'AI Social Agent could not start. Check the logs in C:\ProgramData\AI Social Agent\logs.'
 }
-
 Write-Host 'Installation complete.' -ForegroundColor Green
