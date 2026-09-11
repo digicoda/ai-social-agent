@@ -4,7 +4,7 @@
 ; This intentionally resets the installation instead of preserving old state.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.3.0"
+#define AppVersion "1.4.0"
 #define AppPublisher "DigiCoda"
 
 [Setup]
@@ -47,24 +47,43 @@ var
   StopScript: String;
   OldAppDir: String;
   DataDir: String;
+  StartupLink: String;
+  Attempt: Integer;
 begin
   Result := '';
   NeedsRestart := False;
 
-  { Stop any currently running API/worker before deleting their files. }
   StopScript := ExpandConstant('{app}\windows\stop-agent.ps1');
+  OldAppDir := ExpandConstant('{app}');
+  DataDir := ExpandConstant('{commonappdata}\AI Social Agent');
+  StartupLink := ExpandConstant('{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent.lnk');
+
+  { Stop every known/orphaned API and worker process before touching files. }
   if FileExists(StopScript) then
     Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       '-NoProfile -ExecutionPolicy Bypass -File "' + StopScript + '"',
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  { Remove the complete previous application and persistent state. }
-  OldAppDir := ExpandConstant('{app}');
-  DataDir := ExpandConstant('{commonappdata}\AI Social Agent');
-  if DirExists(OldAppDir) then
-    DelTree(OldAppDir, True, True, True);
-  if DirExists(DataDir) then
-    DelTree(DataDir, True, True, True);
+  { Remove the automatic startup entry so an old process cannot restart. }
+  if FileExists(StartupLink) then
+    DeleteFile(StartupLink);
+
+  { Remove the complete previous application and persistent state. Retry because
+    Windows can briefly retain file handles after Python processes terminate. }
+  for Attempt := 1 to 5 do begin
+    if DirExists(OldAppDir) then
+      DelTree(OldAppDir, True, True, True);
+    if DirExists(DataDir) then
+      DelTree(DataDir, True, True, True);
+    if (not DirExists(OldAppDir)) and (not DirExists(DataDir)) then
+      Break;
+    Sleep(1000);
+  end;
+
+  if DirExists(OldAppDir) or DirExists(DataDir) then begin
+    Result := 'AI Social Agent could not be completely stopped/removed. Close any AI Social Agent windows and try again.';
+    Exit;
+  end;
 end;
 
 [Run]
@@ -76,3 +95,5 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commonappdata}\AI Social Agent"
+Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent.lnk"
