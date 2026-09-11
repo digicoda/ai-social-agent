@@ -2,7 +2,7 @@ name: Windows Desktop Installer
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'v1.2.2']
     paths:
       - 'app/**'
       - 'requirements.txt'
@@ -56,3 +56,30 @@ jobs:
           path: installer/output/AI-Social-Agent-Setup.exe
           if-no-files-found: error
           retention-days: 7
+
+  publish-v1-2-2:
+    if: github.ref == 'refs/heads/v1.2.2' && github.event_name == 'push'
+    needs: build-installer
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: AI-Social-Agent-Windows-Installer
+          path: release
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash release/AI-Social-Agent-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  AI-Social-Agent-Setup.exe" | Set-Content release/AI-Social-Agent-Setup.exe.sha256
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.2.2 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
