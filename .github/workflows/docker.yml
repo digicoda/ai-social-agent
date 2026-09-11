@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+env:
+  ADMIN_USERNAME: ci-admin
+  ADMIN_PASSWORD: ci-password
+  SESSION_SECRET: ci-session-secret-012345678901234567890123
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,15 +32,22 @@ jobs:
           tags: ai-social-agent:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test container health endpoint
+      - name: Smoke test container health and dashboard
         run: |
-          docker run -d --rm --name ai-social-agent-smoke -p 18000:8000 ai-social-agent:test
+          docker run -d --rm --name ai-social-agent-smoke -p 18000:8000 \
+            -e ADMIN_USERNAME="$ADMIN_USERNAME" \
+            -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            -e SESSION_SECRET="$SESSION_SECRET" \
+            ai-social-agent:test
           trap 'docker stop ai-social-agent-smoke >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
-              exit 0
+              break
             fi
             sleep 2
           done
+          curl --fail --silent http://127.0.0.1:18000/dashboard | grep -q 'AI Social Agent'
+          curl --fail --silent -X POST http://127.0.0.1:18000/dashboard/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"ci-admin","password":"ci-password"}' | grep -q 'authenticated'
           docker logs ai-social-agent-smoke
-          exit 1
