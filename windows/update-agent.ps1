@@ -1,6 +1,7 @@
+param([string]$AppRoot = '')
 $ErrorActionPreference = 'Stop'
 
-$Root = Split-Path -Parent $PSScriptRoot
+$Root = if ($AppRoot) { $AppRoot } else { Split-Path -Parent $PSScriptRoot }
 $DataRoot = Join-Path $env:ProgramData 'AI Social Agent'
 $UpdaterRoot = Join-Path $DataRoot 'updater'
 $SelfCopy = Join-Path $UpdaterRoot 'update-agent.ps1'
@@ -12,10 +13,10 @@ $CurrentScript = $PSCommandPath
 New-Item -ItemType Directory -Force -Path $UpdaterRoot | Out-Null
 
 # Never run the updater from the live application directory because the installer
-# is allowed to replace that directory while the updater is still active.
-if ($CurrentScript -and ((Resolve-Path $CurrentScript).Path -ne (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path)) {
+# replaces that directory. Run a detached copy from ProgramData instead.
+if (-not $AppRoot -or ((Resolve-Path $CurrentScript).Path -ne (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path)) {
     Copy-Item $CurrentScript $SelfCopy -Force
-    Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$SelfCopy -WindowStyle Hidden
+    Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$SelfCopy,'-AppRoot',$Root -WindowStyle Hidden
     exit 0
 }
 
