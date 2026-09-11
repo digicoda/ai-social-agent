@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 import re
 
 from .config import Settings
@@ -27,8 +26,13 @@ def _check_database(settings: Settings) -> ReadinessCheck:
 
 def _check_configuration(settings: Settings) -> ReadinessCheck:
     problems: list[str] = []
-    if settings.app_env.lower() == "production" and not settings.internal_api_key:
-        problems.append("INTERNAL_API_KEY is required in production")
+    if settings.app_env.lower() == "production":
+        if not settings.internal_api_key:
+            problems.append("INTERNAL_API_KEY is required in production")
+        if not settings.admin_username or not settings.admin_password:
+            problems.append("ADMIN_USERNAME and ADMIN_PASSWORD are required for the dashboard")
+        if len(settings.session_secret) < 32:
+            problems.append("SESSION_SECRET must be at least 32 characters in production")
     if not re.fullmatch(r"\d{6}", settings.linkedin_api_version):
         problems.append("LINKEDIN_API_VERSION must use YYYYMM format")
     if settings.linkedin_media_poll_attempts < 1:

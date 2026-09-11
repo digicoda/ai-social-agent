@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/ai_social_agent.db"
     internal_api_key: str = ""
 
+    # Admin dashboard authentication
+    admin_username: str = "admin"
+    admin_password: str = ""
+    session_secret: str = ""
+
     # AI provider
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
