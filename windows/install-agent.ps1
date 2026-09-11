@@ -28,7 +28,7 @@ if (-not (Test-Path '.venv\Scripts\python.exe')) {
 New-Item -ItemType Directory -Force -Path 'data','data\logs','data\pids','media' | Out-Null
 
 if (-not (Test-Path '.env')) {
-    $password = [Convert]::ToBase64String((1..24 | ForEach-Object { Get-Random -Maximum 256 }))
+    $password = 'admin-' + ([guid]::NewGuid().ToString('N'))
     $session = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
     $apiKey = [guid]::NewGuid().ToString('N')
     @"
