@@ -8,10 +8,10 @@ Phase 9 provides a temporary browser-accessible environment for manual QA before
 2. Select **GitHub Interactive Manual Test**.
 3. Click **Run workflow**.
 4. Select 10, 20, or 30 minutes.
-5. Open the completed job summary while the job is running.
+5. Open the running job summary.
 6. Use the temporary **Dashboard** URL and generated test credentials shown in the summary.
 
-GitHub supports manually triggered workflows through the `workflow_dispatch` event and the Actions UI. The environment is intentionally disposable rather than persistent. citeturn0search10turn0search6
+GitHub supports manually triggered workflows through the `workflow_dispatch` event and the Actions UI. The environment is intentionally disposable rather than persistent.
 
 ## What to test
 
@@ -40,7 +40,7 @@ LinkedIn publishing is disabled in the default manual environment. Do not add pr
 
 The API, worker, SQLite database, and media volume run only for the selected workflow duration. A Cloudflare Quick Tunnel provides a temporary HTTPS URL for browser testing; it is not a production hostname.
 
-The workflow tears down the containers and volumes when the run ends. Short diagnostic logs are uploaded as a one-day artifact for troubleshooting. GitHub Actions artifacts are designed to persist workflow output after a job completes. citeturn0search0turn0search1
+The workflow tears down the containers and volumes when the run ends. Short diagnostic logs are uploaded as a one-day artifact for troubleshooting.
 
 ## Important security rule
 
