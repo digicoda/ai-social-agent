@@ -47,6 +47,26 @@ def dashboard_page(request: Request) -> HTMLResponse:
     html = html.replace("__AUTH_CONFIGURED__", "true" if _configured() else "false")
     html = html.replace("__HAS_ACCOUNT__", "true" if account_exists else "false")
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
+    update_script = '''<script>
+(function(){
+  function installUpdatePanel(){
+    const title=document.getElementById('title'), content=document.getElementById('content');
+    if(!title||!content||title.textContent!=='System'||document.getElementById('softwareUpdatePanel')) return;
+    const panel=document.createElement('div'); panel.id='softwareUpdatePanel'; panel.className='panel';
+    panel.innerHTML='<div class="section-head"><div><h2>Software Update</h2><div class="muted">Windows Desktop updates stop the agent, install the verified release, preserve your data/configuration, restart the service and check health.</div></div><button id="updateAgentBtn" class="btn">Check &amp; Update</button></div><div id="updateAgentStatus" class="help">Use this only on the Windows Desktop edition.</div>';
+    content.appendChild(panel);
+    document.getElementById('updateAgentBtn').onclick=async function(){
+      if(!confirm('Start the AI Social Agent update now? The service will restart during installation.')) return;
+      const b=this, status=document.getElementById('updateAgentStatus'); b.disabled=true; b.textContent='Starting update…'; status.textContent='Preparing update. Keep this dashboard open; the service will restart automatically.';
+      try{const r=await fetch('/system/update',{method:'POST'});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'Update could not be started.');status.textContent=d.message||'Update started.';}
+      catch(e){status.textContent=e.message;b.disabled=false;b.textContent='Check & Update';}
+    };
+  }
+  new MutationObserver(installUpdatePanel).observe(document.documentElement,{subtree:true,childList:true});
+  setTimeout(installUpdatePanel,300);
+})();
+</script>'''
+    html = html.replace("</body>", update_script + "</body>")
     if not account_exists:
         html = html.replace("</body>", '''<script>
 (function(){
