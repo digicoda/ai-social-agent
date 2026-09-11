@@ -1,8 +1,10 @@
 ; AI Social Agent Windows installer
-; Existing installations are upgraded in place. ProgramData/config/database are preserved.
+; Clean-install mode: every installer run stops the old agent and removes the
+; previous application files, ProgramData data/config, logs, media and database.
+; This intentionally resets the installation instead of preserving old state.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 #define AppPublisher "DigiCoda"
 
 [Setup]
@@ -38,8 +40,34 @@ Name: "{group}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoPro
 Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"
 Name: "{group}\Uninstall AI Social Agent"; Filename: "{uninstallexe}"
 
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+  StopScript: String;
+  OldAppDir: String;
+  DataDir: String;
+begin
+  Result := '';
+  NeedsRestart := False;
+
+  { Stop any currently running API/worker before deleting their files. }
+  StopScript := ExpandConstant('{app}\windows\stop-agent.ps1');
+  if FileExists(StopScript) then
+    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + StopScript + '"',
+      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  { Remove the complete previous application and persistent state. }
+  OldAppDir := ExpandConstant('{app}');
+  DataDir := ExpandConstant('{commonappdata}\AI Social Agent');
+  if DirExists(OldAppDir) then
+    DelTree(OldAppDir, True, True, True);
+  if DirExists(DataDir) then
+    DelTree(DataDir, True, True, True);
+end;
+
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\stop-agent.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated skipifsilent
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\install-agent.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\show-credentials.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated postinstall skipifsilent
 
