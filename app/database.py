@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -77,6 +78,7 @@ def connect(database_url: str) -> sqlite3.Connection:
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")
     connection.executescript(SCHEMA)
     return connection
 
@@ -107,13 +109,21 @@ def save_problem(connection: sqlite3.Connection, problem: Problem) -> bool:
     return cursor.rowcount == 1
 
 
-def list_problems(connection: sqlite3.Connection, limit: int = 25) -> list[tuple[int, Problem]]:
-    rows = connection.execute(
-        "SELECT * FROM problems ORDER BY score DESC, discovered_at DESC LIMIT ?", (limit,)
-    ).fetchall()
-    problems: list[tuple[int, Problem]] = []
-    from datetime import datetime
+def list_problems(
+    connection: sqlite3.Connection,
+    limit: int = 25,
+    *,
+    unanalyzed_only: bool = False,
+) -> list[tuple[int, Problem]]:
+    query = """SELECT p.* FROM problems p"""
+    params: list[int] = []
+    if unanalyzed_only:
+        query += " LEFT JOIN problem_analyses a ON a.problem_id = p.id WHERE a.problem_id IS NULL"
+    query += " ORDER BY p.score DESC, p.discovered_at DESC LIMIT ?"
+    params.append(limit)
+    rows = connection.execute(query, params).fetchall()
 
+    problems: list[tuple[int, Problem]] = []
     for row in rows:
         published_at = datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
         discovered_at = datetime.fromisoformat(row["discovered_at"])
@@ -138,7 +148,7 @@ def list_problems(connection: sqlite3.Connection, limit: int = 25) -> list[tuple
 
 
 def save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: ProblemAnalysis, decision: str) -> None:
-    from datetime import datetime, timezone
+    from datetime import timezone
 
     connection.execute(
         """INSERT INTO problem_analyses
