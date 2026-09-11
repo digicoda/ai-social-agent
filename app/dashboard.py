@@ -12,8 +12,7 @@ DASHBOARD_DIR = Path(__file__).with_name("dashboard")
 
 
 def _configured() -> bool:
-    settings = get_settings()
-    return bool(settings.session_secret) and has_users(settings.database_url)
+    return bool(get_settings().session_secret)
 
 
 def require_dashboard_session(request: Request) -> None:
@@ -25,12 +24,16 @@ def dashboard_login(request: Request, username: str, password: str) -> bool:
     settings = get_settings()
     if not _configured():
         return False
-    if authenticate(settings.database_url, username, password):
-        request.session.clear()
-        request.session["authenticated"] = True
-        request.session["role"] = "admin"
-        return True
-    return False
+    # On first run, the first account created in the dashboard becomes the admin.
+    if not has_users(settings.database_url):
+        if not create_admin(settings.database_url, username, password):
+            return False
+    elif not authenticate(settings.database_url, username, password):
+        return False
+    request.session.clear()
+    request.session["authenticated"] = True
+    request.session["role"] = "admin"
+    return True
 
 
 def dashboard_signup(request: Request, username: str, password: str) -> bool:
@@ -54,5 +57,6 @@ def dashboard_page(request: Request) -> HTMLResponse:
     path = DASHBOARD_DIR / "index.html"
     html = path.read_text(encoding="utf-8")
     html = html.replace("__AUTH_CONFIGURED__", "true" if _configured() else "false")
+    html = html.replace("__HAS_ACCOUNT__", "true" if has_users(get_settings().database_url) else "false")
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
     return HTMLResponse(html)
