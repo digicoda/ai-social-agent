@@ -1,14 +1,19 @@
 from datetime import datetime, timezone
 
 import feedparser
+import httpx
 
 from ..schemas import Problem
 
 
-def fetch_rss(feeds: list[str], limit: int = 25) -> list[Problem]:
+def fetch_rss(feeds: list[str], limit: int = 25, timeout: float = 15.0) -> list[Problem]:
     problems: list[Problem] = []
     for feed_url in feeds:
-        parsed = feedparser.parse(feed_url)
+        response = httpx.get(feed_url, timeout=timeout, follow_redirects=True)
+        response.raise_for_status()
+        parsed = feedparser.parse(response.content)
+        if getattr(parsed, "bozo", False) and not parsed.entries:
+            continue
         for entry in parsed.entries[:limit]:
             link = entry.get("link", "")
             if not link:
@@ -26,7 +31,9 @@ def fetch_rss(feeds: list[str], limit: int = 25) -> list[Problem]:
                     metadata={"feed": feed_url},
                 )
             )
-    return problems[:limit]
+            if len(problems) >= limit:
+                return problems
+    return problems
 
 
 def _entry_datetime(entry) -> datetime | None:
