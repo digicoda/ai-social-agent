@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -17,8 +18,6 @@ from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 
 app = FastAPI(title="AI Social Agent", version="1.1.0")
 
-# SessionMiddleware signs the authentication cookie; it does not store secrets in the browser.
-# A production deployment must provide a strong SESSION_SECRET.
 app.add_middleware(
     SessionMiddleware,
     secret_key=get_settings().session_secret or "development-only-session-secret",
@@ -66,13 +65,8 @@ def _authorize(x_api_key: str | None, request: Request) -> None:
         return
     if expected:
         raise HTTPException(status_code=401, detail="invalid API key or dashboard session")
-    # Development keeps the API convenient when no API key is configured.
-    # Production readiness requires INTERNAL_API_KEY.
 
-def _dashboard_authorize(request: Request) -> None:
-    require_dashboard_session(request)
-
-@app.get("/dashboard", response_class=__import__("fastapi").responses.HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     return dashboard_page(request)
 
