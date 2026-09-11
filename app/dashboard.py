@@ -48,23 +48,124 @@ def dashboard_page(request: Request) -> HTMLResponse:
     path = DASHBOARD_DIR / "index.html"
     html = path.read_text(encoding="utf-8")
     settings = get_settings()
+    account_exists = has_users(settings.database_url)
+
     html = html.replace("__AUTH_CONFIGURED__", "true" if _configured() else "false")
-    html = html.replace("__HAS_ACCOUNT__", "true" if has_users(settings.database_url) else "false")
+    html = html.replace("__HAS_ACCOUNT__", "true" if account_exists else "false")
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
+
+    # Render the first-run choice in the HTML itself instead of relying on a
+    # dynamically-created tab. This makes the signup option visible even when
+    # a browser has cached the dashboard JavaScript.
+    login_marker = '<div id="loginNotice" class="notice hidden"></div>'
+    login_choices = '''
+  <div id="authMode" style="display:flex;gap:8px;margin:18px 0 4px">
+    <button type="button" id="signInTab" class="btn secondary" style="flex:1">Sign in</button>
+    <button type="button" id="signUpTab" class="btn" style="flex:1">Create admin</button>
+  </div>
+'''
+    if login_marker in html and 'id="authMode"' not in html:
+        html = html.replace(login_marker, login_marker + login_choices)
+
     setup_script = r'''<script>
-(function(){
- const hasAccount=__HAS_ACCOUNT__, box=document.getElementById('login'), form=document.getElementById('loginForm');
- if(!box||!form)return; const h=box.querySelector('h1'), sub=box.querySelector('p.muted'), btn=form.querySelector('button'), notice=document.getElementById('loginNotice');
- const tabs=document.createElement('div'); tabs.style.cssText='display:flex;gap:8px;margin:18px 0 4px';
- tabs.innerHTML='<button type="button" id="signInTab" class="btn secondary" style="flex:1">Sign in</button><button type="button" id="signUpTab" class="btn" style="flex:1">Create admin</button>';
- form.parentNode.insertBefore(tabs,form);
- const confirmLabel=document.createElement('label'), confirm=document.createElement('input');
- confirmLabel.textContent='Confirm password'; confirmLabel.style.cssText='display:block;font-size:13px;font-weight:600;margin:14px 0 6px'; confirm.type='password'; confirm.id='confirmPassword'; confirm.style.width='100%'; form.append(confirmLabel,confirm);
- let signup=!hasAccount;
- function mode(v,msg){signup=v;h.textContent=v?'Create admin account':'Welcome back';sub.textContent=v?'First-time setup — create your administrator login.':'Sign in to your admin dashboard.';btn.textContent=v?'Create account':'Sign in';document.getElementById('signInTab').className=v?'btn secondary':'btn';document.getElementById('signUpTab').className=v?'btn':'btn secondary';confirmLabel.classList.toggle('hidden',!v);confirm.classList.toggle('hidden',!v);confirm.required=v;if(msg){notice.textContent=msg;notice.classList.remove('hidden')}else notice.classList.add('hidden')}
- document.getElementById('signInTab').onclick=()=>mode(false,''); document.getElementById('signUpTab').onclick=()=>mode(true,'Create your first admin account.');
- form.onsubmit=async e=>{e.preventDefault();const password=document.getElementById('password').value;if(signup&&password!==confirm.value)return mode(true,'Passwords do not match.');if(signup&&password.length<8)return mode(true,'Password must be at least 8 characters.');btn.disabled=true;try{const r=await fetch('/dashboard/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password})});if(r.ok){showApp();refresh()}else{const d=await r.json().catch(()=>({}));mode(signup,d.detail||(signup?'Account could not be created.':'Invalid credentials.'))}}finally{btn.disabled=false}};
- mode(signup,signup?'Welcome! Create your admin username and password to begin.':'');
+(function () {
+  function initAuthMode() {
+    const box = document.getElementById('login');
+    const form = document.getElementById('loginForm');
+    const signInTab = document.getElementById('signInTab');
+    const signUpTab = document.getElementById('signUpTab');
+    if (!box || !form || !signInTab || !signUpTab) return;
+
+    const hasAccount = __HAS_ACCOUNT__;
+    const heading = box.querySelector('h1');
+    const subtitle = box.querySelector('p.muted');
+    const button = form.querySelector('button');
+    const notice = document.getElementById('loginNotice');
+    let confirmationInput = document.getElementById('confirmPassword');
+    let confirmationLabel = document.getElementById('confirmPasswordLabel');
+
+    if (!confirmationInput) {
+      confirmationLabel = document.createElement('label');
+      confirmationLabel.id = 'confirmPasswordLabel';
+      confirmationLabel.textContent = 'Confirm password';
+      confirmationInput = document.createElement('input');
+      confirmationInput.type = 'password';
+      confirmationInput.id = 'confirmPassword';
+      confirmationInput.autocomplete = 'new-password';
+      confirmationInput.style.width = '100%';
+      form.append(confirmationLabel, confirmationInput);
+    }
+
+    let signup = !hasAccount;
+
+    function setMode(value, message) {
+      signup = value;
+      heading.textContent = value ? 'Create admin account' : 'Welcome back';
+      subtitle.textContent = value
+        ? 'First-time setup — create your administrator login.'
+        : 'Sign in to your admin dashboard.';
+      button.textContent = value ? 'Create account' : 'Sign in';
+      signInTab.className = value ? 'btn secondary' : 'btn';
+      signUpTab.className = value ? 'btn' : 'btn secondary';
+      confirmationLabel.classList.toggle('hidden', !value);
+      confirmationInput.classList.toggle('hidden', !value);
+      confirmationInput.required = value;
+      if (message) {
+        notice.textContent = message;
+        notice.classList.remove('hidden');
+      } else {
+        notice.classList.add('hidden');
+      }
+    }
+
+    signInTab.onclick = function () { setMode(false, ''); };
+    signUpTab.onclick = function () {
+      setMode(true, 'Create your first admin account.');
+    };
+
+    form.onsubmit = async function (event) {
+      event.preventDefault();
+      const password = document.getElementById('password').value;
+      if (signup && password !== confirmationInput.value) {
+        setMode(true, 'Passwords do not match.');
+        return;
+      }
+      if (signup && password.length < 8) {
+        setMode(true, 'Password must be at least 8 characters.');
+        return;
+      }
+      button.disabled = true;
+      try {
+        const response = await fetch('/dashboard/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: password
+          })
+        });
+        if (response.ok) {
+          showApp();
+          refresh();
+        } else {
+          const data = await response.json().catch(function () { return {}; });
+          setMode(signup, data.detail || (signup ? 'Account could not be created.' : 'Invalid credentials.'));
+        }
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    setMode(signup, signup
+      ? 'Welcome! Create your admin username and password to begin.'
+      : '');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAuthMode);
+  } else {
+    initAuthMode();
+  }
 })();
 </script>'''
     html = html.replace('</body>', setup_script + '</body>')
