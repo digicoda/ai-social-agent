@@ -16,18 +16,19 @@ on:
 permissions:
   contents: read
 
+env:
+  COMPOSE_PROJECT_NAME: ai-social-agent-manual
+  ADMIN_USERNAME: test-admin
+  APP_ENV: development
+  SESSION_SECRET: github-manual-test-session-secret
+  INTERNAL_API_KEY: github-manual-test-api-key
+  WORKER_POLL_SECONDS: "5"
+  DURATION_MINUTES: ${{ inputs.duration_minutes }}
+
 jobs:
   interactive-test:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    env:
-      COMPOSE_PROJECT_NAME: ai-social-agent-manual
-      ADMIN_USERNAME: test-admin
-      APP_ENV: development
-      SESSION_SECRET: github-manual-test-session-secret
-      INTERNAL_API_KEY: github-manual-test-api-key
-      WORKER_POLL_SECONDS: "5"
-      DURATION_MINUTES: ${{ inputs.duration_minutes }}
 
     steps:
       - name: Check out repository
@@ -102,12 +103,25 @@ jobs:
           cat /tmp/cloudflared.log
           exit 1
 
-      - name: Publish test access details
+      - name: Publish LIVE dashboard access details
         shell: bash
         env:
           TEST_PASSWORD: ${{ steps.credentials.outputs.password }}
           TEST_URL: ${{ steps.tunnel.outputs.url }}
         run: |
+          echo
+          echo '============================================================'
+          echo 'LIVE TEMPORARY DASHBOARD ACCESS'
+          echo '============================================================'
+          echo "Dashboard: ${TEST_URL}/dashboard"
+          echo "Username:  ${ADMIN_USERNAME}"
+          echo "Password:  ${TEST_PASSWORD}"
+          echo "Expires:   after ${DURATION_MINUTES} minutes"
+          echo 'IMPORTANT: use this URL while this workflow is running.'
+          echo 'The Cloudflare Quick Tunnel is destroyed during workflow cleanup.'
+          echo '============================================================'
+          echo "::notice title=Dashboard ready::${TEST_URL}/dashboard is live now. Open this job's logs to see the temporary credentials."
+
           {
             echo '# Interactive GitHub test environment'
             echo
@@ -124,11 +138,44 @@ jobs:
             echo '- The public tunnel URL is temporary and changes on every run.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Keep environment available for manual testing
+      - name: Monitor dashboard and tunnel during manual test
         shell: bash
+        env:
+          TEST_URL: ${{ steps.tunnel.outputs.url }}
+          TEST_PASSWORD: ${{ steps.credentials.outputs.password }}
         run: |
-          echo "Temporary environment will remain available for ${DURATION_MINUTES} minutes."
-          sleep "$((DURATION_MINUTES * 60))"
+          end_time=$((SECONDS + DURATION_MINUTES * 60))
+          check_count=0
+          while [ "$SECONDS" -lt "$end_time" ]; do
+            if ! docker inspect -f '{{.State.Running}}' ai-social-agent-tunnel 2>/dev/null | grep -q true; then
+              echo '::error title=Cloudflare tunnel stopped::cloudflared stopped before the manual test ended.'
+              docker logs ai-social-agent-tunnel 2>&1 || true
+              exit 1
+            fi
+
+            # Verify the public route periodically. Three quick retries avoid
+            # failing the manual test on a single transient network request.
+            if [ $((check_count % 4)) -eq 0 ]; then
+              healthy=0
+              for retry in 1 2 3; do
+                if curl --fail --silent --show-error --max-time 10 "${TEST_URL}/dashboard" >/dev/null; then
+                  healthy=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "$healthy" -ne 1 ]; then
+                echo '::error title=Dashboard tunnel health check failed::The temporary public dashboard stopped responding. Check cloudflared logs below.'
+                docker logs ai-social-agent-tunnel 2>&1 || true
+                exit 1
+              fi
+              echo "Dashboard tunnel health check OK (${check_count})"
+            fi
+
+            check_count=$((check_count + 1))
+            sleep 5
+          done
+          echo "Manual test window completed successfully: ${DURATION_MINUTES} minutes."
 
       - name: Collect test logs
         if: always()
