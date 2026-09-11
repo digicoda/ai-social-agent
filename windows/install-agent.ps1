@@ -34,8 +34,7 @@ if (-not (Test-Path $VenvPython)) {
     & $Python -m venv $VenvPath
 }
 
-# Do not download/install dependencies on every reinstall.
-# The venv is kept under the application directory and is reused when present.
+# Reuse the existing virtual environment and dependencies when requirements.txt has not changed.
 $DepsMarker = Join-Path $VenvPath '.requirements-installed'
 $Requirements = Join-Path $Root 'requirements.txt'
 $RequirementsHash = (Get-FileHash $Requirements -Algorithm SHA256).Hash
@@ -71,8 +70,11 @@ WORKER_POLL_SECONDS=5
     Write-Host 'Save these credentials somewhere safe.'
 }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'windows\start-agent.ps1') -NoBrowser
+# Start the local API and worker silently. The installer itself is responsible for the GUI credential screen.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'windows\start-agent.ps1')
 
-Write-Host ''
+if ($LASTEXITCODE -ne 0) {
+    throw 'AI Social Agent could not start. Check the logs in C:\ProgramData\AI Social Agent\logs.'
+}
+
 Write-Host 'Installation complete.' -ForegroundColor Green
-Write-Host 'Dashboard: http://127.0.0.1:8000/dashboard'
