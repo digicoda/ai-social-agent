@@ -1,4 +1,4 @@
-param([string]$AppRoot = $env:AI_SOCIAL_AGENT_APP_ROOT)
+param([string]$AppRoot = '')
 $ErrorActionPreference = 'Stop'
 
 $Root = if ($AppRoot) { $AppRoot } else { Split-Path -Parent $PSScriptRoot }
@@ -17,7 +17,8 @@ New-Item -ItemType Directory -Force -Path $UpdaterRoot | Out-Null
 # replaces that directory. Run a detached copy from ProgramData instead.
 if ($CurrentScript -ne $CopiedScript) {
     Copy-Item $CurrentScript $SelfCopy -Force
-    Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$SelfCopy -WindowStyle Hidden -Environment @{ AI_SOCIAL_AGENT_APP_ROOT = $Root }
+    $args = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopy`" -AppRoot `"$Root`""
+    Start-Process powershell.exe -ArgumentList $args -WindowStyle Hidden
     exit 0
 }
 
