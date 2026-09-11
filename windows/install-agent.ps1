@@ -29,13 +29,23 @@ if (-not $Python) {
 New-Item -ItemType Directory -Force -Path $DataRoot, (Join-Path $DataRoot 'data'), (Join-Path $DataRoot 'logs'), (Join-Path $DataRoot 'media'), (Join-Path $DataRoot 'pids') | Out-Null
 
 $VenvPath = Join-Path $Root '.venv'
-if (-not (Test-Path (Join-Path $VenvPath 'Scripts\python.exe'))) {
+$VenvPython = Join-Path $VenvPath 'Scripts\python.exe'
+if (-not (Test-Path $VenvPython)) {
     & $Python -m venv $VenvPath
 }
 
-$VenvPython = Join-Path $VenvPath 'Scripts\python.exe'
-& $VenvPython -m pip install --upgrade pip
-& $VenvPython -m pip install -r (Join-Path $Root 'requirements.txt')
+# Do not download/install dependencies on every reinstall.
+# The venv is kept under the application directory and is reused when present.
+$DepsMarker = Join-Path $VenvPath '.requirements-installed'
+$Requirements = Join-Path $Root 'requirements.txt'
+$RequirementsHash = (Get-FileHash $Requirements -Algorithm SHA256).Hash
+$InstalledHash = if (Test-Path $DepsMarker) { (Get-Content $DepsMarker -Raw).Trim() } else { '' }
+if ($InstalledHash -ne $RequirementsHash) {
+    & $VenvPython -m pip install -r $Requirements
+    Set-Content -Path $DepsMarker -Value $RequirementsHash -Encoding ASCII
+} else {
+    Write-Host 'Python environment already installed; reusing existing dependencies.'
+}
 
 if (-not (Test-Path $ConfigFile)) {
     $password = 'admin-' + ([guid]::NewGuid().ToString('N'))
@@ -61,7 +71,7 @@ WORKER_POLL_SECONDS=5
     Write-Host 'Save these credentials somewhere safe.'
 }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'windows\start-agent.ps1')
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'windows\start-agent.ps1') -NoBrowser
 
 Write-Host ''
 Write-Host 'Installation complete.' -ForegroundColor Green
