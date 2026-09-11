@@ -12,13 +12,20 @@ Get-Content $ConfigFile | ForEach-Object { if ($_ -match '^\s*([^#=][^=]*)=(.*)$
 $env:AI_SOCIAL_AGENT_CONFIG = $ConfigFile
 $env:PYTHONPATH = $Root
 function Test-Health { try { return (Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -TimeoutSec 2 -UseBasicParsing).StatusCode -eq 200 } catch { return $false } }
+function Test-DashboardRoutes {
+    try {
+        $openapi = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/openapi.json' -TimeoutSec 3
+        return $null -ne $openapi.paths.'/system/settings' -and $null -ne $openapi.paths.'/dashboard/login'
+    } catch { return $false }
+}
 function Get-RunningProcess([string]$PidFile) { if (-not (Test-Path $PidFile)) { return $null }; try { $id = [int](Get-Content $PidFile -Raw).Trim(); return Get-Process -Id $id -ErrorAction Stop } catch { Remove-Item $PidFile -Force -ErrorAction SilentlyContinue; return $null } }
 $ApiPidFile = Join-Path $PidDir 'api.pid'
 $WorkerPidFile = Join-Path $PidDir 'worker.pid'
 if (-not (Test-Health)) { $Api = Get-RunningProcess $ApiPidFile; if (-not $Api) { $ApiLog = Join-Path $LogDir 'api.log'; $ApiErr = Join-Path $LogDir 'api-error.log'; $Api = Start-Process -FilePath $VenvPython -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000' -WorkingDirectory $Root -RedirectStandardOutput $ApiLog -RedirectStandardError $ApiErr -WindowStyle Hidden -PassThru; Set-Content -Path $ApiPidFile -Value $Api.Id } }
 $Worker = Get-RunningProcess $WorkerPidFile
 if (-not $Worker) { $WorkerLog = Join-Path $LogDir 'worker.log'; $WorkerErr = Join-Path $LogDir 'worker-error.log'; $Worker = Start-Process -FilePath $VenvPython -ArgumentList '-m','app.cli','worker','--loop' -WorkingDirectory $Root -RedirectStandardOutput $WorkerLog -RedirectStandardError $WorkerErr -WindowStyle Hidden -PassThru; Set-Content -Path $WorkerPidFile -Value $Worker.Id }
-for ($i = 0; $i -lt 30; $i++) { if (Test-Health) { Write-Host 'AI Social Agent is running.' -ForegroundColor Green; Write-Host 'Dashboard: http://127.0.0.1:8000/dashboard'; exit 0 }; Start-Sleep -Seconds 1 }
-Write-Host 'API did not become healthy. Check:' -ForegroundColor Red
+for ($i = 0; $i -lt 30; $i++) { if ((Test-Health) -and (Test-DashboardRoutes)) { Write-Host 'AI Social Agent is running.' -ForegroundColor Green; Write-Host 'Dashboard: http://127.0.0.1:8000/dashboard'; exit 0 }; Start-Sleep -Seconds 1 }
+Write-Host 'API did not become healthy with the required dashboard routes.' -ForegroundColor Red
+Write-Host 'Check:'
 Write-Host (Join-Path $LogDir 'api-error.log')
 exit 1
