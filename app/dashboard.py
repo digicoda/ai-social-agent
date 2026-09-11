@@ -22,21 +22,28 @@ def require_dashboard_session(request: Request) -> None:
 
 def dashboard_login(request: Request, username: str, password: str) -> bool:
     settings = get_settings()
-    if not _configured(): return False
+    if not _configured():
+        return False
     if not has_users(settings.database_url):
-        if not create_admin(settings.database_url, username, password): return False
-    elif not authenticate(settings.database_url, username, password): return False
-    request.session.clear(); request.session["authenticated"] = True; request.session["role"] = "admin"
+        if not create_admin(settings.database_url, username, password):
+            return False
+    elif not authenticate(settings.database_url, username, password):
+        return False
+    request.session.clear()
+    request.session["authenticated"] = True
+    request.session["role"] = "admin"
     return True
 
 
 def dashboard_signup(request: Request, username: str, password: str) -> bool:
-    if has_users(get_settings().database_url): return False
+    if has_users(get_settings().database_url):
+        return False
     return dashboard_login(request, username, password)
 
 
 def dashboard_logout(request: Request) -> RedirectResponse:
-    request.session.clear(); return RedirectResponse("/dashboard", status_code=303)
+    request.session.clear()
+    return RedirectResponse("/dashboard", status_code=303)
 
 
 def dashboard_page(request: Request) -> HTMLResponse:
@@ -47,6 +54,7 @@ def dashboard_page(request: Request) -> HTMLResponse:
     html = html.replace("__AUTH_CONFIGURED__", "true" if _configured() else "false")
     html = html.replace("__HAS_ACCOUNT__", "true" if account_exists else "false")
     html = html.replace("__AUTHENTICATED__", "true" if request.session.get("authenticated") else "false")
+
     update_script = '''<script>
 (function(){
   function installUpdatePanel(){
@@ -66,9 +74,10 @@ def dashboard_page(request: Request) -> HTMLResponse:
   setTimeout(installUpdatePanel,300);
 })();
 </script>'''
+
     search_script = '''<script>
 (function(){
-  const esc=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
+  const esc=v=>String(v??'').replace(/[&<>\\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]));
   const title=document.getElementById('title'), content=document.getElementById('content');
   let options=null, lastSignature='';
   async function loadOptions(){if(options)return options;const r=await fetch('/research/options');if(!r.ok)throw new Error('Could not load research options.');options=await r.json();return options;}
@@ -98,7 +107,53 @@ def dashboard_page(request: Request) -> HTMLResponse:
   setTimeout(()=>{if(title&&title.textContent==='Research')renderSearch();},500);
 })();
 </script>'''
-    html = html.replace("</body>", update_script + search_script + "</body>")
+
+    approval_script = '''<script>
+(function(){
+  const title=document.getElementById('title'), content=document.getElementById('content');
+  const esc=v=>String(v??'').replace(/[&<>\\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]));
+  let rendering=false;
+  async function renderApproval(){
+    if(!title||!content||title.textContent!=='Content Approval'||rendering)return;
+    rendering=true;
+    try{
+      const q=await api('/approval/queue?limit=100');
+      const items=q.items||[];
+      const pending=items.filter(x=>x.status==='pending_approval').length;
+      const high=items.filter(x=>(x.generation_confidence||0)>=80).length;
+      content.innerHTML=`
+      <div class="cards">
+        <div class="card"><div class="muted">Pending review</div><div class="metric">${pending}</div></div>
+        <div class="card"><div class="muted">High confidence</div><div class="metric">${high}</div></div>
+        <div class="card"><div class="muted">Platforms</div><div class="metric">${new Set(items.map(x=>x.platform)).size}</div></div>
+        <div class="card"><div class="muted">Loaded drafts</div><div class="metric">${items.length}</div></div>
+      </div>
+      <div class="panel"><div class="section-head"><div><h2>Content Review Queue</h2><div class="muted">Review the complete draft before it moves to scheduling or publishing.</div></div><div class="row"><select id="approvalFilter" style="width:auto"><option value="all">All loaded</option><option value="pending_approval">Pending only</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select><button class="btn secondary" id="approvalRefresh">Refresh queue</button></div></div><div id="approvalList" class="list"></div></div>`;
+      const list=document.getElementById('approvalList');
+      function draw(){
+        const filter=document.getElementById('approvalFilter').value;
+        const visible=filter==='all'?items:items.filter(x=>x.status===filter);
+        list.innerHTML=visible.length?visible.map(d=>{
+          const confidence=Number(d.generation_confidence||0);
+          const state=d.status==='pending_approval'?'next':d.status==='approved'?'ok':'';
+          const tags=(d.hashtags||[]).map(h=>`<span class="status">${esc(h)}</span>`).join('');
+          return `<article class="item" data-draft="${d.id}"><div class="section-head"><div><strong>${esc(d.title||'Untitled draft')}</strong><div class="muted">Draft #${d.id} · ${esc(d.platform||'unknown')} · Created ${esc(d.created_at||'')}</div></div><span class="status ${state}">${esc(d.status)}</span></div><div class="row" style="margin-bottom:10px"><span class="status">AI confidence ${confidence}%</span>${tags}</div><p style="white-space:pre-wrap">${esc(d.body||'')}</p>${d.call_to_action?`<div class="help"><strong>Call to action:</strong> ${esc(d.call_to_action)}</div>`:''}${d.rejection_reason?`<div class="notice" style="margin-top:10px">Rejection reason: ${esc(d.rejection_reason)}</div>`:''}<div class="row" style="margin-top:12px">${d.status==='pending_approval'?`<button class="btn" onclick="approveDraft(${d.id})">Approve</button><button class="btn danger" onclick="rejectDraft(${d.id})">Reject</button>`:''}<button class="btn secondary" onclick="copyDraft(${d.id})">Copy draft</button></div></article>`;
+        }).join(''):'<p class="muted">No drafts match this filter.</p>';
+      }
+      window.approvalItems=items;
+      window.approveDraft=async id=>{const d=window.approvalItems.find(x=>x.id===id);if(!d)return;if(!confirm(`Approve draft #${id} for ${d.platform}?`))return;await decide(id,'approved');};
+      window.rejectDraft=async id=>{const reason=prompt('Reason for rejection (required):');if(!reason||!reason.trim())return;await decide(id,'rejected',reason.trim());};
+      window.copyDraft=async id=>{const d=window.approvalItems.find(x=>x.id===id);if(!d)return;const text=[d.title,d.body,d.call_to_action,(d.hashtags||[]).join(' ')].filter(Boolean).join('\\n\\n');try{await navigator.clipboard.writeText(text);toast('Draft copied to clipboard.')}catch(e){toast('Clipboard access is unavailable.')}};
+      document.getElementById('approvalFilter').onchange=draw;
+      document.getElementById('approvalRefresh').onclick=()=>refresh();
+      draw();
+    }catch(e){content.innerHTML=`<div class="panel"><p>${esc(e.message)}</p></div>`}finally{rendering=false;}
+  }
+  new MutationObserver(()=>{if(title&&title.textContent==='Content Approval')setTimeout(renderApproval,0);}).observe(document.documentElement,{subtree:true,childList:true,characterData:true});
+})();
+</script>'''
+
+    html = html.replace("</body>", update_script + search_script + approval_script + "</body>")
     if not account_exists:
         html = html.replace("</body>", '''<script>
 (function(){
