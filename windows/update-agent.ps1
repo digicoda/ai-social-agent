@@ -1,4 +1,4 @@
-param([string]$AppRoot = '')
+param([string]$AppRoot = $env:AI_SOCIAL_AGENT_APP_ROOT)
 $ErrorActionPreference = 'Stop'
 
 $Root = if ($AppRoot) { $AppRoot } else { Split-Path -Parent $PSScriptRoot }
@@ -8,15 +8,16 @@ $SelfCopy = Join-Path $UpdaterRoot 'update-agent.ps1'
 $Repo = 'digicoda/ai-social-agent'
 $AssetName = 'AI-Social-Agent-Setup.exe'
 $ChecksumName = 'AI-Social-Agent-Setup.exe.sha256'
-$CurrentScript = $PSCommandPath
+$CurrentScript = (Resolve-Path $PSCommandPath).Path
+$CopiedScript = (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path
 
 New-Item -ItemType Directory -Force -Path $UpdaterRoot | Out-Null
 
 # Never run the updater from the live application directory because the installer
 # replaces that directory. Run a detached copy from ProgramData instead.
-if (-not $AppRoot -or ((Resolve-Path $CurrentScript).Path -ne (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path)) {
+if ($CurrentScript -ne $CopiedScript) {
     Copy-Item $CurrentScript $SelfCopy -Force
-    Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$SelfCopy,'-AppRoot',$Root -WindowStyle Hidden
+    Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$SelfCopy -WindowStyle Hidden -Environment @{ AI_SOCIAL_AGENT_APP_ROOT = $Root }
     exit 0
 }
 
