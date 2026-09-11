@@ -16,39 +16,23 @@ from .publishing import PublishingError
 from .readiness import check_readiness
 from .research.runner import run_research
 from .research.profiles import delete_profile, get_profile, list_profiles, save_profile
+from .research.search import SearchRequest, search as run_profile_search
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
 app = FastAPI(title="AI Social Agent", version="1.2.2")
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret or "development-only-session-secret", session_cookie="ai_social_session", same_site="lax", https_only=get_settings().app_env.lower() == "production")
-class ApprovalRequest(BaseModel):
-    action: str = Field(pattern="^(approved|rejected)$")
-    reason: str = ""
-class ScheduleRequest(BaseModel):
-    provider: str = "linkedin"
-    scheduled_for: str
-    max_attempts: int = Field(default=3, ge=1, le=10)
-    media_type: str = Field(default="none", pattern="^(none|image|document|video|multi_image)$")
-    media_paths: list[str] = Field(default_factory=list, max_length=20)
-class MediaPublishRequest(BaseModel):
-    provider: str = "linkedin"
-    image_path: str = Field(min_length=1)
-class MultiImagePublishRequest(BaseModel):
-    provider: str = "linkedin"
-    image_paths: list[str] = Field(min_length=2, max_length=20)
-class DocumentPublishRequest(BaseModel):
-    provider: str = "linkedin"
-    document_path: str = Field(min_length=1)
-class VideoPublishRequest(BaseModel):
-    provider: str = "linkedin"
-    video_path: str = Field(min_length=1)
-class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=128)
-    password: str = Field(min_length=1, max_length=256)
-class SettingsRequest(BaseModel):
-    values: dict[str, object] = Field(default_factory=dict)
-class ProfileRequest(BaseModel):
-    values: dict[str, object] = Field(default_factory=dict)
+class ApprovalRequest(BaseModel): action: str = Field(pattern="^(approved|rejected)$"); reason: str = ""
+class ScheduleRequest(BaseModel): provider: str = "linkedin"; scheduled_for: str; max_attempts: int = Field(default=3, ge=1, le=10); media_type: str = Field(default="none", pattern="^(none|image|document|video|multi_image)$"); media_paths: list[str] = Field(default_factory=list, max_length=20)
+class MediaPublishRequest(BaseModel): provider: str = "linkedin"; image_path: str = Field(min_length=1)
+class MultiImagePublishRequest(BaseModel): provider: str = "linkedin"; image_paths: list[str] = Field(min_length=2, max_length=20)
+class DocumentPublishRequest(BaseModel): provider: str = "linkedin"; document_path: str = Field(min_length=1)
+class VideoPublishRequest(BaseModel): provider: str = "linkedin"; video_path: str = Field(min_length=1)
+class LoginRequest(BaseModel): username: str = Field(min_length=1, max_length=128); password: str = Field(min_length=1, max_length=256)
+class SettingsRequest(BaseModel): values: dict[str, object] = Field(default_factory=dict)
+class ProfileRequest(BaseModel): values: dict[str, object] = Field(default_factory=dict)
+class ResearchSearchRequest(BaseModel):
+    profile_id: int | None = None; topic: str = Field(default="", max_length=500); mode: str = "standard"; category: str = Field(default="", max_length=120); intents: list[str] = Field(default_factory=list, max_length=20); sources: list[str] = Field(default_factory=list, max_length=10); time_range: str = "30d"; limit: int = Field(default=30, ge=1, le=100)
 def _authorize(x_api_key: str | None, request: Request) -> None:
     expected = get_settings().internal_api_key
     if expected and x_api_key == expected: return
@@ -103,6 +87,17 @@ def research_profile_update(profile_id: int, request: Request, payload: ProfileR
     except (ValueError, TypeError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 @app.delete("/research/profiles/{profile_id}")
 def research_profile_delete(profile_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return {"deleted": delete_profile(get_settings().database_url, profile_id)}
+@app.post("/research/search")
+def research_search(request: Request, payload: ResearchSearchRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request)
+    settings=get_settings(); profile=None
+    if payload.profile_id is not None:
+        profile=get_profile(settings.database_url,payload.profile_id)
+        if profile is None: raise HTTPException(status_code=404, detail="profile not found")
+    try:
+        result=run_profile_search(settings, SearchRequest(payload.profile_id,payload.topic,payload.mode,payload.category,payload.intents,payload.sources,payload.time_range,payload.limit), profile)
+        return result
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 @app.post("/research/run")
 def research_run(request: Request, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request); result = run_research(get_settings()); return {"discovered": result.discovered, "saved": result.saved, "duplicates": result.duplicates, "failed_sources": result.failed_sources}
@@ -118,67 +113,4 @@ def content_generate(request: Request, limit: int = 10, x_api_key: str | None = 
     try: return generate_content(get_settings(), limit=limit)
     except ContentGenerationError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 @app.get("/approval/queue")
-def approval_queue(request: Request, status: str = "pending_approval", limit: int = 25, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if status not in {"pending_approval", "approved", "rejected", "published"}: raise HTTPException(status_code=400, detail="invalid status")
-    if not 1 <= limit <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
-    return {"items": queue(get_settings(), status=status, limit=limit)}
-@app.post("/approval/{draft_id}")
-def approval_decision(draft_id: int, request: Request, payload: ApprovalRequest, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: changed = set_decision(get_settings(), draft_id, payload.action, payload.reason)
-    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not changed: raise HTTPException(status_code=404, detail="draft not found")
-    return {"id": draft_id, "status": payload.action}
-@app.post("/publish/{draft_id}")
-def publish(draft_id: int, request: Request, provider: str = "linkedin", x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return publish_draft(get_settings(), draft_id, provider)
-    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/publish/{draft_id}/image")
-def publish_image(draft_id: int, payload: MediaPublishRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return publish_draft(get_settings(), draft_id, payload.provider, media_paths=[payload.image_path], media_type="image")
-    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/publish/{draft_id}/multi-image")
-def publish_multi_image(draft_id: int, payload: MultiImagePublishRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return publish_draft(get_settings(), draft_id, payload.provider, media_paths=payload.image_paths, media_type="multi_image")
-    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/publish/{draft_id}/document")
-def publish_document(draft_id: int, payload: DocumentPublishRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return publish_draft(get_settings(), draft_id, payload.provider, media_paths=[payload.document_path], media_type="document")
-    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/publish/{draft_id}/video")
-def publish_video(draft_id: int, payload: VideoPublishRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return publish_draft(get_settings(), draft_id, payload.provider, media_paths=[payload.video_path], media_type="video")
-    except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/schedule/{draft_id}")
-def schedule(draft_id: int, payload: ScheduleRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return schedule_draft(get_settings(), draft_id, payload.provider, payload.scheduled_for, payload.max_attempts, payload.media_type, payload.media_paths)
-    except (ValueError, PublishingError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.get("/schedules")
-def schedule_list(request: Request, status: str | None = None, limit: int = 50, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not 1 <= limit <= 200: raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
-    return {"items": schedules(get_settings(), status=status, limit=limit)}
-@app.delete("/schedule/{schedule_id}")
-def schedule_cancel(schedule_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not cancel_draft_schedule(get_settings(), schedule_id): raise HTTPException(status_code=404, detail="active schedule not found")
-    return {"schedule_id": schedule_id, "status": "cancelled"}
-@app.post("/worker/run")
-def worker_run(request: Request, limit: int | None = None, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request); batch = limit or get_settings().worker_batch_size
-    if not 1 <= batch <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
-    return run_due_schedules(get_settings(), limit=batch)
-@app.get("/publishing/history")
-def history(request: Request, provider: str | None = None, limit: int = 50, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not 1 <= limit <= 200: raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
-    return {"items": publishing_history(get_settings().database_url, limit=limit, provider=provider)}
-@app.get("/publishing/stats")
-def stats(request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return publishing_stats(get_settings().database_url)
+def approval_queue(request: Request, limit: int = 25, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return {"items": queue(get_settings().database_url, limit=limit)}
