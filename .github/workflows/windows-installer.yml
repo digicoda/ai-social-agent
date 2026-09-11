@@ -1,6 +1,14 @@
 name: Windows Desktop Installer
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'requirements.txt'
+      - 'windows/**'
+      - 'installer/**'
+      - '.github/workflows/windows-installer.yml'
   pull_request:
     branches: [main]
     paths:
