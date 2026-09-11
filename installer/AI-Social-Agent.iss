@@ -4,7 +4,7 @@
 ; This intentionally resets the installation instead of preserving old state.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.4.0"
+#define AppVersion "1.4.1"
 #define AppPublisher "DigiCoda"
 
 [Setup]
@@ -26,7 +26,7 @@ DisableProgramGroupPage=yes
 [Files]
 Source: "..\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\windows\*.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\windows\*.ps1"; DestDir: "{app}\windows"; Flags: recursesubdirs ignoreversion
 
 [Dirs]
 Name: "{commonappdata}\AI Social Agent"
