@@ -29,7 +29,7 @@ def run_research(settings: Settings) -> ResearchResult:
     sources: list[tuple[str, Callable[[], list[Problem]]]] = [
         ("github", lambda: fetch_github_issues(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
         ("reddit", lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds)),
-        ("rss", lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source)),
+        ("rss", lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
         ("stackoverflow", lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
     ]
     connection = connect(settings.database_url)
