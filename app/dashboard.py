@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from .auth import authenticate, create_admin, has_users
 from .config import get_settings
 
 DASHBOARD_DIR = Path(__file__).with_name("dashboard")
@@ -13,7 +13,7 @@ DASHBOARD_DIR = Path(__file__).with_name("dashboard")
 
 def _configured() -> bool:
     settings = get_settings()
-    return bool(settings.admin_username and settings.admin_password and settings.session_secret)
+    return bool(settings.session_secret) and has_users(settings.database_url)
 
 
 def require_dashboard_session(request: Request) -> None:
@@ -25,13 +25,24 @@ def dashboard_login(request: Request, username: str, password: str) -> bool:
     settings = get_settings()
     if not _configured():
         return False
-    valid_user = secrets.compare_digest(username, settings.admin_username)
-    valid_password = secrets.compare_digest(password, settings.admin_password)
-    if valid_user and valid_password:
+    if authenticate(settings.database_url, username, password):
         request.session.clear()
         request.session["authenticated"] = True
+        request.session["role"] = "admin"
         return True
     return False
+
+
+def dashboard_signup(request: Request, username: str, password: str) -> bool:
+    settings = get_settings()
+    if has_users(settings.database_url):
+        return False
+    if not create_admin(settings.database_url, username, password):
+        return False
+    request.session.clear()
+    request.session["authenticated"] = True
+    request.session["role"] = "admin"
+    return True
 
 
 def dashboard_logout(request: Request) -> RedirectResponse:
