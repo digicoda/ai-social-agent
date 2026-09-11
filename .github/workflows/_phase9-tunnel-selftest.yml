@@ -1,0 +1,60 @@
+name: Phase 9 Tunnel Self-Test
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tunnel-self-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Start local HTTP service
+        shell: bash
+        run: |
+          python3 -m http.server 8000 --bind 127.0.0.1 >/tmp/test-server.log 2>&1 &
+          echo $! >/tmp/test-server.pid
+          curl --fail --silent http://127.0.0.1:8000/ >/dev/null
+
+      - name: Start and validate Quick Tunnel
+        shell: bash
+        run: |
+          docker pull cloudflare/cloudflared:latest
+          docker run -d --rm --name ai-social-agent-tunnel --network host \
+            cloudflare/cloudflared:latest \
+            tunnel --no-autoupdate --url http://127.0.0.1:8000
+
+          : > /tmp/cloudflared.log
+          url=""
+          for attempt in $(seq 1 45); do
+            docker logs ai-social-agent-tunnel > /tmp/cloudflared.log 2>&1 || true
+            url="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1 || true)"
+            if [ -n "$url" ]; then
+              break
+            fi
+            if ! docker inspect -f '{{.State.Running}}' ai-social-agent-tunnel 2>/dev/null | grep -q true; then
+              cat /tmp/cloudflared.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [ -z "$url" ]; then
+            cat /tmp/cloudflared.log
+            exit 1
+          fi
+
+          echo "Quick Tunnel URL: $url"
+          curl --fail --silent --show-error "$url/" >/dev/null
+          echo "Quick Tunnel successfully exposed the local HTTP service."
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f ai-social-agent-tunnel >/dev/null 2>&1 || true
+          kill "$(cat /tmp/test-server.pid)" >/dev/null 2>&1 || true
