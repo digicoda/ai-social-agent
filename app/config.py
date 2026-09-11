@@ -1,32 +1,25 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=os.environ.get("AI_SOCIAL_AGENT_CONFIG", ".env"), extra="ignore")
 
     app_env: str = "development"
     database_url: str = "sqlite:///./data/ai_social_agent.db"
     internal_api_key: str = ""
-
-    # Admin dashboard authentication
     admin_username: str = "admin"
     admin_password: str = ""
     session_secret: str = ""
-
-    # AI provider
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     gemini_timeout_seconds: float = 30.0
-
-    # Research sources
     reddit_user_agent: str = "ai-social-agent/0.1"
     rss_feeds: str = "https://hnrss.org/frontpage"
     research_timeout_seconds: float = 15.0
     research_limit_per_source: int = 25
-
-    # Publishing
     publishing_timeout_seconds: float = 20.0
     linkedin_access_token: str = ""
     linkedin_author_urn: str = ""
