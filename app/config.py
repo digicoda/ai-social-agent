@@ -1,6 +1,5 @@
 import os
 from contextvars import ContextVar
-from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -53,17 +52,26 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.rss_feeds.split(",") if item.strip()]
 
 
-@lru_cache
 def get_settings() -> Settings:
+    """Return current environment settings with the request's active profile overlay."""
     base = Settings()
     profile = _active_profile.get()
-    if not profile: return base
+    if not profile:
+        return base
     cfg = profile.get("config") or {}
-    values = {"ai_provider": cfg.get("ai_provider", base.ai_provider), "gemini_model": base.gemini_model, "openai_model": base.openai_model, "huggingface_model": base.huggingface_model}
-    provider = str(cfg.get("ai_provider") or base.ai_provider)
+    values = {
+        "ai_provider": cfg.get("ai_provider", base.ai_provider),
+        "gemini_model": base.gemini_model,
+        "openai_model": base.openai_model,
+        "huggingface_model": base.huggingface_model,
+        "database_url": profile.get("database_url") or base.database_url,
+    }
+    provider = str(cfg.get("ai_provider") or base.ai_provider).lower()
     model = str(cfg.get("ai_model") or "")
-    if provider == "gemini" and model: values["gemini_model"] = model
-    elif provider == "openai" and model: values["openai_model"] = model
-    elif provider == "huggingface" and model: values["huggingface_model"] = model
-    values["database_url"] = profile.get("database_url") or base.database_url
+    if provider == "gemini" and model:
+        values["gemini_model"] = model
+    elif provider == "openai" and model:
+        values["openai_model"] = model
+    elif provider == "huggingface" and model:
+        values["huggingface_model"] = model
     return base.model_copy(update=values)
