@@ -59,7 +59,7 @@ def save_settings(payload: dict) -> dict:
     for key, value in payload.items():
         if key not in EDITABLE_SETTINGS or (key in SECRET_KEYS and (value is None or str(value) == "••••••••")): continue
         validated = _validate(key, str(value)); env_name, _ = EDITABLE_SETTINGS[key]; raw[env_name] = validated; os.environ[env_name] = validated
-    _write_file(raw); get_settings.cache_clear(); return read_settings()
+    _write_file(raw); return read_settings()
 
 def provider_status() -> list[dict[str, object]]:
     s = get_settings()
