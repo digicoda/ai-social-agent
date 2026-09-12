@@ -84,3 +84,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create v1.2.2 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
+
+# Final installer verification trigger.
