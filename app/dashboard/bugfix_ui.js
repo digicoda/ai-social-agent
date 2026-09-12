@@ -1,6 +1,5 @@
 <style>
-/* Targeted workflow fixes: source safety, research-to-content handoff, visible generation state. */
-.research-source-warning{margin:8px 0;padding:9px 11px;border:1px solid #f1d9a8;background:#fff9ed;color:#7a5600;border-radius:8px;font-size:10px;line-height:1.45}.content-generation-note{margin:0 0 12px;padding:10px 12px;border:1px solid #e4e0ff;background:#f8f6ff;color:#5f46a8;border-radius:9px;font-size:11px}.generation-status{display:inline-flex;align-items:center;margin-left:8px;font-size:10px;color:#737887}.generation-status.ok{color:#027a48}.generation-status.error{color:#b42318}
+.research-source-warning{margin:8px 0;padding:9px 11px;border:1px solid #d9d2ff;background:#f8f6ff;color:#5f46a8;border-radius:8px;font-size:10px;line-height:1.45}.content-generation-note{margin:0 0 12px;padding:10px 12px;border:1px solid #e4e0ff;background:#f8f6ff;color:#5f46a8;border-radius:9px;font-size:11px}.generation-status{display:inline-flex;align-items:center;margin-left:8px;font-size:10px;color:#737887}.generation-status.ok{color:#027a48}.generation-status.error{color:#b42318}
 </style>
 <script>
 (function(){
@@ -14,12 +13,12 @@
     const select=$('rs');
     if(!select)return;
     const web=[...select.options].find(o=>o.value==='web');
-    if(web){web.disabled=true;web.selected=false;web.textContent='Web Search — unavailable';}
+    if(web){web.disabled=false;web.textContent='Web Search';}
     const wrap=$('sourceMulti');
-    if(wrap){const row=[...wrap.querySelectorAll('.source-multi-option')].find(x=>x.querySelector('input')?.getAttribute('aria-label')==='Web Search');if(row){const cb=row.querySelector('input');if(cb){cb.checked=false;cb.disabled=true;}row.style.opacity='.55';row.style.cursor='not-allowed';row.title='Web Search is not implemented in this build.';}}}
+    if(wrap){const row=[...wrap.querySelectorAll('.source-multi-option')].find(x=>x.querySelector('input')?.getAttribute('aria-label')==='Web Search');if(row){const cb=row.querySelector('input');if(cb){cb.disabled=false;}row.style.opacity='';row.style.cursor='';row.title='Web Search is available.';}}
     window.__updateResearchSourceLabel?.();
-    let warning=$('researchSourceWarning');
-    if(!warning){warning=document.createElement('div');warning.id='researchSourceWarning';warning.className='research-source-warning';warning.textContent='Web Search is shown as unavailable until a real web-search adapter/API is configured. It cannot be selected or counted as a research source.';const panel=$('researchResults')?.parentElement;panel?.insertBefore(warning,$('researchResults'));}
+    const warning=$('researchSourceWarning');
+    if(warning)warning.remove();
   }
 
   function saveSelectedResearch(article){
@@ -75,6 +74,6 @@
 
   function enhance(){patchSourceSelector();patchCreateButtons();patchContent()}
   const root=$('content');if(root){new MutationObserver(()=>{clearTimeout(window.__bugfixTimer);window.__bugfixTimer=setTimeout(enhance,0)}).observe(root,{childList:true,subtree:true})}
-  setTimeout(enhance,100);window.addEventListener('beforeunload',()=>{});
+  setTimeout(enhance,100);
 })();
 </script>
