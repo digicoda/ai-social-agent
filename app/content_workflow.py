@@ -8,7 +8,7 @@ import httpx
 
 from .ai import create_ai_client
 from .config import Settings
-from .content import ContentGenerationError, _content_analysis, _generate
+from .content import ContentGenerationError, _apply_human_quality, _content_analysis, _generate
 from .database import connect, save_analysis, save_draft
 from .schemas import Problem
 
@@ -51,6 +51,7 @@ def generate_for_problem(settings: Settings, problem_id: int) -> dict[str, Any]:
             return {"generated": 0, "skipped": 1, "failed": 0, "reason": "AI analysis marked this item as discard"}
         with httpx.Client(timeout=settings.gemini_timeout_seconds) as client:
             draft = _generate(client, settings, _problem_from_row(problem), analysis)
+            draft = _apply_human_quality(client, settings, draft)
         draft_id = save_draft(db, problem_id, "generic", draft.title, draft.body, draft.hashtags, draft.call_to_action, draft.confidence)
         return {"generated": 1, "skipped": 0, "failed": 0, "draft_id": draft_id}
     except httpx.HTTPError as exc:
