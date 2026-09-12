@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from .config import Settings
 from .database import connect, list_drafts, update_draft_status
@@ -6,9 +7,30 @@ from .database import connect, list_drafts, update_draft_status
 VALID_ACTIONS = {"approved", "rejected"}
 
 
+def _ensure_audit_table(connection) -> None:
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS approval_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            draft_id INTEGER NOT NULL,
+            from_status TEXT NOT NULL,
+            to_status TEXT NOT NULL,
+            action TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(draft_id) REFERENCES content_drafts(id) ON DELETE CASCADE
+        )"""
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_approval_audit_draft ON approval_audit(draft_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_approval_audit_created ON approval_audit(created_at)")
+    connection.commit()
+
+
 def queue(settings: Settings, status: str | None = "pending_approval", limit: int = 25) -> list[dict]:
+    if limit < 1 or limit > 100:
+        raise ValueError("limit must be between 1 and 100")
     connection = connect(settings.database_url)
     try:
+        _ensure_audit_table(connection)
         rows = list_drafts(connection, status=status, limit=limit)
         return [
             {
@@ -36,15 +58,42 @@ def queue(settings: Settings, status: str | None = "pending_approval", limit: in
 def set_decision(settings: Settings, draft_id: int, action: str, reason: str = "") -> bool:
     if action not in VALID_ACTIONS:
         raise ValueError("action must be approved or rejected")
-    if action == "rejected" and not reason.strip():
+    reason = reason.strip()
+    if action == "rejected" and not reason:
         raise ValueError("a rejection reason is required")
     connection = connect(settings.database_url)
     try:
+        _ensure_audit_table(connection)
         row = connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
         if row is None:
             return False
-        if row["status"] != "pending_approval":
+        from_status = str(row["status"])
+        if from_status != "pending_approval":
             raise ValueError("only pending_approval drafts can be approved or rejected")
-        return update_draft_status(connection, draft_id, action, reason.strip())
+        changed = update_draft_status(connection, draft_id, action, reason)
+        if not changed:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        connection.execute(
+            "INSERT INTO approval_audit (draft_id, from_status, to_status, action, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (draft_id, from_status, action, action, reason, now),
+        )
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
+def history(settings: Settings, draft_id: int, limit: int = 25) -> list[dict]:
+    if limit < 1 or limit > 100:
+        raise ValueError("limit must be between 1 and 100")
+    connection = connect(settings.database_url)
+    try:
+        _ensure_audit_table(connection)
+        rows = connection.execute(
+            "SELECT id, draft_id, from_status, to_status, action, reason, created_at FROM approval_audit WHERE draft_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (draft_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         connection.close()
