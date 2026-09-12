@@ -3,7 +3,7 @@ from pathlib import Path
 
 def test_task9_critical_runtime_modules_exist():
     required = [
-        "app/research.py",
+        "app/research/__init__.py",
         "app/intelligence.py",
         "app/content_workflow.py",
         "app/approval.py",
