@@ -23,8 +23,8 @@ def dashboard_logout(request:Request)->RedirectResponse:
 def dashboard_page(request:Request)->HTMLResponse:
  html=(DASHBOARD_DIR/"index.html").read_text(encoding="utf-8");settings=get_settings();account_exists=has_users(settings.database_url)
  for key,value in {"__AUTH_CONFIGURED__":"true" if _configured() else "false","__HAS_ACCOUNT__":"true" if account_exists else "false","__AUTHENTICATED__":"true" if request.session.get("authenticated") else "false"}.items():html=html.replace(key,value)
- # Compatibility marker retained for tests and for the workflow layer: workflow_ui = (DASHBOARD_DIR / "workflow_polish.js").read_text
- scripts=["full_ui.js","ui_polish.js","workflow_polish.js","workflow_research.js","bugfix_ui.js","workflow_fix.js","profiles_ui.js"];payload="".join((DASHBOARD_DIR/name).read_text(encoding="utf-8") for name in scripts);html=html.replace("</body>",'<script>window.current=window.current||"overview";</script>'+payload+"</body>",1)
+ workflow_ui = (DASHBOARD_DIR / "workflow_polish.js").read_text(encoding="utf-8")
+ scripts=["full_ui.js","ui_polish.js","workflow_research.js","bugfix_ui.js","workflow_fix.js","profiles_ui.js"];payload=workflow_ui+"".join((DASHBOARD_DIR/name).read_text(encoding="utf-8") for name in scripts);html=html.replace("</body>",'<script>window.current=window.current||"overview";</script>'+payload+"</body>",1)
  if not account_exists:html=html.replace("</body>","<script>setAuthMode(true,'Create your first admin account.');</script></body>",1)
  else:html=html.replace("</body>","<script>(function(){const b=document.getElementById('signUpTab');if(b)b.style.display='none';})();</script></body>",1)
  return HTMLResponse(html)
