@@ -2,17 +2,15 @@ import os
 import secrets
 import subprocess
 from pathlib import Path
-
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
-
 from .analytics import publishing_history, publishing_stats
 from .analysis import run_analysis
 from .approval import queue, set_decision
 from .config import get_settings
-from .content import ContentGenerationError, generate_content
+from .content import ContentGenerationError
 from .content_workflow import generate_for_problem, generate_from_intelligence
 from .dashboard import dashboard_login, dashboard_logout, dashboard_page
 from .intelligence import list_clusters, list_intelligence, run_intelligence
@@ -26,16 +24,12 @@ from .research.search_api import router as research_search_router
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
-
 settings = get_settings()
-if settings.app_env.lower() == "production" and not settings.session_secret:
-    raise RuntimeError("SESSION_SECRET must be configured in production.")
+if settings.app_env.lower() == "production" and not settings.session_secret: raise RuntimeError("SESSION_SECRET must be configured in production.")
 session_secret = settings.session_secret or secrets.token_urlsafe(32)
-
 app = FastAPI(title="AI Social Agent", version="1.3.0")
 app.include_router(research_search_router)
 app.add_middleware(SessionMiddleware, secret_key=session_secret, session_cookie="ai_social_session", same_site="lax", https_only=settings.app_env.lower() == "production", max_age=60 * 60 * 8)
-
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     method = request.method.upper()
@@ -52,10 +46,8 @@ async def security_middleware(request: Request, call_next):
     response.headers["Cache-Control"] = "no-store" if request.url.path.startswith(("/dashboard", "/system", "/intelligence", "/research", "/profiles")) else response.headers.get("Cache-Control", "")
     if settings.app_env.lower() == "production": response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
-
 class ApprovalRequest(BaseModel):
-    action: str = Field(pattern="^(approved|rejected)$")
-    reason: str = ""
+    action: str = Field(pattern="^(approved|rejected)$"); reason: str = ""
 class ScheduleRequest(BaseModel):
     provider: str = "linkedin"; scheduled_for: str; max_attempts: int = Field(default=3, ge=1, le=10); media_type: str = Field(default="none", pattern="^(none|image|document|video|multi_image)$"); media_paths: list[str] = Field(default_factory=list, max_length=20)
 class MediaPublishRequest(BaseModel): provider: str = "linkedin"; image_path: str = Field(min_length=1, max_length=1024)
@@ -65,13 +57,11 @@ class VideoPublishRequest(BaseModel): provider: str = "linkedin"; video_path: st
 class LoginRequest(BaseModel): username: str = Field(min_length=1, max_length=128); password: str = Field(min_length=1, max_length=256)
 class SettingsRequest(BaseModel): values: dict[str, object] = Field(default_factory=dict)
 class ProfileRequest(BaseModel): name: str = Field(min_length=1, max_length=100); config: dict[str, object] = Field(default_factory=dict); enabled: bool = True; profile_id: int | None = None
-
 def _authorize(x_api_key: str | None, request: Request) -> None:
     expected = get_settings().internal_api_key
     if expected and x_api_key == expected: return
     if request.session.get("authenticated") is True: return
     if expected: raise HTTPException(status_code=401, detail="invalid API key or dashboard session")
-
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request): return dashboard_page(request)
 @app.post("/dashboard/login")
@@ -102,35 +92,35 @@ def system_update(request: Request, x_api_key: str | None = Header(default=None)
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
     subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], cwd=str(script.parent.parent), creationflags=creationflags, close_fds=True)
     return {"status": "started", "message": "Update started. The service will restart automatically after installation."}
-
 @app.get("/profiles")
 def profiles_get(request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return {"items": list_profiles(get_settings().database_url)}
 @app.get("/profiles/{profile_id}")
-def profile_get(profile_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); item = get_profile(get_settings().database_url, profile_id); return item or (_ for _ in ()).throw(HTTPException(status_code=404, detail="profile not found"))
+def profile_get(profile_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request); item = get_profile(get_settings().database_url, profile_id)
+    if not item: raise HTTPException(status_code=404, detail="profile not found")
+    return item
 @app.post("/profiles")
-def profile_save(request: Request, payload: ProfileRequest, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request)
-
+def profile_save(request: Request, payload: ProfileRequest, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request)
+    try: return save_profile(get_settings().database_url, payload.name, payload.config, None, payload.enabled)
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
 @app.put("/profiles")
 def profile_update(request: Request, payload: ProfileRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request)
     try: return save_profile(get_settings().database_url, payload.name, payload.config, payload.profile_id, payload.enabled)
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-
 @app.delete("/profiles/{profile_id}")
 def profile_delete(profile_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request)
     if not delete_profile(get_settings().database_url, profile_id): raise HTTPException(status_code=404, detail="profile not found")
     return {"deleted": True, "profile_id": profile_id}
-
 @app.post("/profiles/{profile_id}/run")
 def profile_run(profile_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request); profile = get_profile(get_settings().database_url, profile_id)
     if not profile: raise HTTPException(status_code=404, detail="profile not found")
     return run_profile_cycle(get_settings(), profile)
-
 @app.post("/profiles/run-due")
 def profiles_run_due(request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return run_due_profile_automation(get_settings())
-
 @app.post("/research/run")
 def research_run(request: Request, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request); result = run_research(get_settings()); return {"discovered": result.discovered, "saved": result.saved, "duplicates": result.duplicates, "failed_sources": result.failed_sources}
