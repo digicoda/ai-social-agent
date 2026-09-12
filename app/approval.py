@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 
 from .config import Settings
-from .database import connect, list_drafts, update_draft_status
+from .database import connect, list_drafts
 
 VALID_ACTIONS = {"approved", "rejected"}
 
@@ -70,16 +70,24 @@ def set_decision(settings: Settings, draft_id: int, action: str, reason: str = "
         from_status = str(row["status"])
         if from_status != "pending_approval":
             raise ValueError("only pending_approval drafts can be approved or rejected")
-        changed = update_draft_status(connection, draft_id, action, reason)
-        if not changed:
-            return False
         now = datetime.now(timezone.utc).isoformat()
+        timestamp_column = "approved_at" if action == "approved" else "rejected_at"
+        cursor = connection.execute(
+            f"UPDATE content_drafts SET status = ?, updated_at = ?, {timestamp_column} = ?, rejection_reason = ? WHERE id = ? AND status = 'pending_approval'",
+            (action, now, now, reason, draft_id),
+        )
+        if cursor.rowcount != 1:
+            connection.rollback()
+            raise ValueError("only pending_approval drafts can be approved or rejected")
         connection.execute(
             "INSERT INTO approval_audit (draft_id, from_status, to_status, action, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (draft_id, from_status, action, action, reason, now),
         )
         connection.commit()
         return True
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
