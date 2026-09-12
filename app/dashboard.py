@@ -57,7 +57,8 @@ def dashboard_page(request: Request) -> HTMLResponse:
     }.items():
         html = html.replace(key, value)
     full_ui = (DASHBOARD_DIR / "full_ui.js").read_text(encoding="utf-8")
-    html = html.replace("</body>", '<script>window.current=window.current||"overview";</script>' + full_ui + "</body>", 1)
+    polish_ui = (DASHBOARD_DIR / "ui_polish.js").read_text(encoding="utf-8")
+    html = html.replace("</body>", '<script>window.current=window.current||"overview";</script>' + full_ui + polish_ui + "</body>", 1)
     if not account_exists:
         html = html.replace("</body>", "<script>setAuthMode(true,'Create your first admin account.');</script></body>", 1)
     else:
