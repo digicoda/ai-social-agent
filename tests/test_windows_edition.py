@@ -41,9 +41,9 @@ def test_installer_metadata_and_upgrade_safety():
     assert "{commonappdata}\\AI Social Agent" in content
 
 
-def test_installer_workflow_builds_only_non_draft_prs_or_pushes():
+def test_installer_workflow_contains_test_build_and_artifact_stages():
     content = WORKFLOW.read_text(encoding="utf-8")
-    assert "github.event_name != 'pull_request' || github.event.pull_request.draft == false" in content
     assert "Run Python tests" in content
     assert "Build installer" in content
     assert "Upload installer" in content
+    assert "workflow_dispatch" in content
