@@ -6,13 +6,7 @@ from .publish_lock import claim_draft_for_publish, mark_draft_published_from_cla
 from .publishing import PublishingError, get_publisher
 
 
-def publish_draft(
-    settings: Settings,
-    draft_id: int,
-    provider_name: str,
-    media_paths: list[str] | None = None,
-    media_type: str = "none",
-) -> dict:
+def publish_draft(settings: Settings, draft_id: int, provider_name: str, media_paths: list[str] | None = None, media_type: str = "none") -> dict:
     connection = connect(settings.database_url)
     try:
         row = connection.execute("SELECT id, title, body, hashtags, status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
@@ -24,6 +18,8 @@ def publish_draft(
                 connection.execute("UPDATE content_drafts SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (draft_id,))
                 connection.commit()
             return {"draft_id": draft_id, "provider": provider_name, "remote_id": previous["remote_id"], "url": "", "idempotent": True}
+        if row["status"] not in {"approved", "publishing"}:
+            raise PublishingError("only approved drafts can be published", retryable=False)
     finally:
         connection.close()
 
