@@ -182,12 +182,7 @@ def _assign_cluster(connection: sqlite3.Connection, problem: Problem, analysis: 
 
 
 def _refresh_cluster(connection: sqlite3.Connection, cluster_id: int) -> None:
-    rows = connection.execute("""
-        SELECT i.*, p.source, p.external_id, p.title, p.url, p.summary, p.body, p.tags, p.score,
-               p.comments, p.published_at, p.discovered_at, p.metadata
-        FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
-        WHERE i.cluster_id=?
-    """, (cluster_id,)).fetchall()
+    rows = connection.execute("SELECT * FROM ai_intelligence WHERE cluster_id=?", (cluster_id,)).fetchall()
     if not rows:
         return
     analyses = [_analysis_from_row(row) for row in rows]
@@ -220,13 +215,15 @@ def run_intelligence(settings: Settings, limit: int = 100, client_factory: Calla
             return result
 
         existing = _existing_canonical(connection)
+        existing_by_id = {cid: (cp, ca) for cid, cp, ca in existing}
         problems_by_id = {int(row["id"]): _problem(row) for row in rows}
         canonical_new: list[tuple[int, Problem]] = []
         duplicate_map: dict[int, int] = {}
         for row in rows:
             pid = int(row["id"])
             problem = problems_by_id[pid]
-            duplicate_of = next((cid for cid, cp, _ in existing + [(nid, np, None) for nid, np in canonical_new] if semantic_similarity(problem.title, cp.title) >= 0.72), None)
+            candidates = [(cid, cp) for cid, cp, _ in existing] + [(nid, np) for nid, np in canonical_new]
+            duplicate_of = next((cid for cid, cp in candidates if semantic_similarity(problem.title, cp.title) >= 0.72), None)
             if duplicate_of is None:
                 canonical_new.append((pid, problem))
             else:
@@ -241,26 +238,30 @@ def run_intelligence(settings: Settings, limit: int = 100, client_factory: Calla
             except Exception:
                 result.failed += 1
 
+        cluster_ids: set[int] = set()
         cluster_for: dict[int, int] = {}
         for pid, analysis in analyses.items():
             cluster_id = _assign_cluster(connection, problems_by_id[pid], analysis)
+            cluster_ids.add(cluster_id)
             cluster_for[pid] = cluster_id
             _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, 1), None, cluster_id)
 
         for pid, canonical_id in duplicate_map.items():
-            analysis = analyses.get(canonical_id)
-            if analysis is None and canonical_id in {cid for cid, _, _ in existing}:
-                analysis = next(a for cid, _, a in existing if cid == canonical_id)
-            if analysis is not None:
-                cluster_id = cluster_for.get(canonical_id)
-                if cluster_id is None:
-                    cluster_id = next((cluster for cid, cluster in [(cid, row["cluster_id"]) for row in connection.execute("SELECT problem_id, cluster_id FROM ai_intelligence WHERE problem_id=?", (canonical_id,)).fetchall()] if cid == canonical_id), None)
-                _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, 1), canonical_id, int(cluster_id) if cluster_id else None)
+            analysis = analyses.get(canonical_id) or existing_by_id.get(canonical_id, (None, None))[1]
+            if analysis is None:
+                continue
+            cluster_id = cluster_for.get(canonical_id)
+            if cluster_id is None:
+                cluster_row = connection.execute("SELECT cluster_id FROM ai_intelligence WHERE problem_id=?", (canonical_id,)).fetchone()
+                cluster_id = int(cluster_row["cluster_id"]) if cluster_row and cluster_row["cluster_id"] else None
+            if cluster_id:
+                cluster_ids.add(cluster_id)
+            _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, 1), canonical_id, cluster_id)
 
-        for cluster_id in set(cluster_for.values()) | {int(row["cluster_id"]) for row in connection.execute("SELECT cluster_id FROM ai_intelligence WHERE cluster_id IS NOT NULL AND problem_id IN (SELECT problem_id FROM ai_intelligence WHERE analyzed_at >= datetime('now','-1 day'))").fetchall()}:
+        for cluster_id in cluster_ids:
             _refresh_cluster(connection, cluster_id)
-        result.clusters = connection.execute("SELECT COUNT(*) FROM ai_clusters").fetchone()[0]
-        result.assignments = sum(1 for pid in analyses if cluster_for.get(pid) is not None)
+        result.clusters = len(cluster_ids)
+        result.assignments = len(cluster_for)
         result.opportunities = sum(1 for pid, analysis in analyses.items() if opportunity_score(problems_by_id[pid], analysis, 1) >= 70)
         connection.commit()
     finally:
