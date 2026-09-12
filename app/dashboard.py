@@ -59,7 +59,7 @@ def dashboard_page(request: Request) -> HTMLResponse:
     full_ui = (DASHBOARD_DIR / "full_ui.js").read_text(encoding="utf-8")
     html = html.replace("</body>", '<script>window.current=window.current||"overview";</script>' + full_ui + "</body>", 1)
     if not account_exists:
-        html = html.replace("</body>", '''<script>(function(){const form=document.getElementById('loginForm');if(!form)return;form.addEventListener('submit',async function(e){e.preventDefault();const p=document.getElementById('password').value;if(p!==document.getElementById('confirmPassword').value)return setAuthMode(true,'Passwords do not match.');if(p.length<8)return setAuthMode(true,'Password must be at least 8 characters.');const b=document.getElementById('authSubmit');b.disabled=true;try{const r=await fetch('/dashboard/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:p})});if(r.ok){document.getElementById('password').value='';document.getElementById('confirmPassword').value='';setAuthMode(false,'Account created successfully. Please sign in.')}else{const d=await r.json().catch(()=>({}));setAuthMode(true,d.detail||'Account could not be created.')}}finally{b.disabled=false}})})();</script></body>''', 1)
+        html = html.replace("</body>", "<script>setAuthMode(true,'Create your first admin account.');</script></body>", 1)
     else:
-        html = html.replace("</body>", '''<script>(function(){const b=document.getElementById('signUpTab');if(b)b.style.display='none'})();</script></body>''', 1)
+        html = html.replace("</body>", "<script>(function(){const b=document.getElementById('signUpTab');if(b)b.style.display='none';})();</script></body>", 1)
     return HTMLResponse(html)
