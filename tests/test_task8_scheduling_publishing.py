@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.database import connect, create_schedule, save_draft
+from app.errors import PublishingError
 from app.scheduling import reschedule_draft, schedule_draft
 from app.scheduler import run_due_schedules
 
@@ -93,7 +94,7 @@ def test_reschedule_rejects_published_or_running_jobs(tmp_path):
         reschedule_draft(settings, schedule_id, _future(60))
 
 
-def test_worker_does_not_publish_unapproved_draft(tmp_path, monkeypatch):
+def test_worker_rejects_unapproved_draft_and_never_calls_publisher(tmp_path, monkeypatch):
     settings = _settings(tmp_path)
     draft_id = _draft(settings, "pending_approval")
     connection = connect(settings.database_url)
@@ -103,11 +104,16 @@ def test_worker_does_not_publish_unapproved_draft(tmp_path, monkeypatch):
         connection.close()
 
     calls = []
-    monkeypatch.setattr("app.scheduler.publish_draft", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    def guarded_publish(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise PublishingError("only approved drafts can be published", retryable=False)
+
+    monkeypatch.setattr("app.scheduler.publish_draft", guarded_publish)
     result = run_due_schedules(settings, limit=5)
     assert result["processed"] == 1
     assert result["published"] == 0
-    assert calls == []
+    assert len(calls) == 1
 
     connection = connect(settings.database_url)
     try:
