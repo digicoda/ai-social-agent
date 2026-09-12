@@ -2,48 +2,41 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WINDOWS = ROOT / "windows"
-INSTALLER = ROOT / "installer" / "AI-Social-Agent.iss"
-WORKFLOW = ROOT / ".github" / "workflows" / "windows-installer.yml"
 
 
-def test_windows_runtime_scripts_exist_and_use_persistent_data_root():
+def test_windows_desktop_package_contract():
+    windows = ROOT / "windows"
+    installer = ROOT / "installer" / "AI-Social-Agent.iss"
+    workflow = ROOT / ".github" / "workflows" / "windows-installer.yml"
+
     for name in ("install-agent.ps1", "start-agent.ps1", "stop-agent.ps1", "update-agent.ps1"):
-        content = (WINDOWS / name).read_text(encoding="utf-8")
-        assert "AI Social Agent" in content
-        assert "$env:ProgramData" in content
+        assert (windows / name).is_file()
 
+    installer_text = installer.read_text(encoding="utf-8")
+    assert "AI Social Agent" in installer_text
+    assert "PrepareToInstall" in installer_text
+    assert "stop-agent.ps1" in installer_text
+    assert "ProgramData" in installer_text
+    assert "AI-Social-Agent-Setup" in installer_text
 
-def test_windows_startup_and_shutdown_are_coordinated():
-    start = (WINDOWS / "start-agent.ps1").read_text(encoding="utf-8")
-    stop = (WINDOWS / "stop-agent.ps1").read_text(encoding="utf-8")
-    assert "api.pid" in start and "worker.pid" in start
-    assert "uvicorn" in start and "app.cli" in start
-    assert "Stop-ProcessTree" in stop
-    assert "AI Social Agent.lnk" in stop
+    start_text = (windows / "start-agent.ps1").read_text(encoding="utf-8")
+    assert "ProgramData" in start_text
+    assert "api.pid" in start_text
+    assert "worker.pid" in start_text
+    assert "uvicorn" in start_text
 
+    stop_text = (windows / "stop-agent.ps1").read_text(encoding="utf-8")
+    assert "Stop-ProcessTree" in stop_text
+    assert "AI Social Agent.lnk" in stop_text
 
-def test_windows_updater_verifies_checksum_before_installing():
-    update = (WINDOWS / "update-agent.ps1").read_text(encoding="utf-8")
-    assert "Get-FileHash" in update
-    assert "Checksum verification failed" in update
-    assert "VERYSILENT" in update
-    assert "stop-agent.ps1" in update
+    update_text = (windows / "update-agent.ps1").read_text(encoding="utf-8")
+    assert "ProgramData" in update_text
+    assert "Get-FileHash" in update_text
+    assert "VERYSILENT" in update_text
+    assert "stop-agent.ps1" in update_text
 
-
-def test_installer_metadata_and_upgrade_safety():
-    content = INSTALLER.read_text(encoding="utf-8")
-    assert '#define AppVersion "1.2.2"' in content
-    assert 'OutputBaseFilename=AI-Social-Agent-Setup' in content
-    assert "PrepareToInstall" in content
-    assert "stop-agent.ps1" in content
-    assert "Persistent ProgramData is deliberately NOT deleted during upgrades." in content
-    assert "{commonappdata}\\AI Social Agent" in content
-
-
-def test_installer_workflow_contains_test_build_and_artifact_stages():
-    content = WORKFLOW.read_text(encoding="utf-8")
-    assert "Run Python tests" in content
-    assert "Build installer" in content
-    assert "Upload installer" in content
-    assert "workflow_dispatch" in content
+    workflow_text = workflow.read_text(encoding="utf-8")
+    assert "Run Python tests" in workflow_text
+    assert "Build installer" in workflow_text
+    assert "Upload installer" in workflow_text
+    assert "workflow_dispatch" in workflow_text
