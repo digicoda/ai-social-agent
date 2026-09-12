@@ -55,6 +55,9 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return current environment settings with the request's active profile overlay."""
     base = Settings()
+    env_database_url = os.environ.get("DATABASE_URL")
+    if env_database_url:
+        base = base.model_copy(update={"database_url": env_database_url})
     profile = _active_profile.get()
     if not profile:
         return base
