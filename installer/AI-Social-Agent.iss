@@ -39,12 +39,9 @@ Name: "{commonappdata}\AI Social Agent\logs"
 Name: "{commonappdata}\AI Social Agent\media"
 Name: "{commonappdata}\AI Social Agent\pids"
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
-
 [Icons]
 Name: "{group}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"
-Name: "{autodesktop}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"; Tasks: desktopicon
+Name: "{autodesktop}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"
 Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"
 Name: "{group}\Uninstall AI Social Agent"; Filename: "{uninstallexe}"; IconFilename: "{app}\AI-Social-Agent.ico"
 
