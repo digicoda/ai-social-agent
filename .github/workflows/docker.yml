@@ -49,5 +49,6 @@ jobs:
           curl --fail --silent http://127.0.0.1:18000/dashboard | grep -q 'AI Social Agent'
           curl --fail --silent -X POST http://127.0.0.1:18000/dashboard/login \
             -H 'Content-Type: application/json' \
+            -H 'Origin: http://127.0.0.1:18000' \
             -d '{"username":"ci-admin","password":"ci-password"}' | grep -q 'authenticated'
           docker logs ai-social-agent-smoke
