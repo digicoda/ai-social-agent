@@ -46,3 +46,34 @@ def test_content_analysis_reads_ai_intelligence(tmp_path):
         assert loaded[0].pain_point == "pain"
     finally:
         connection.close()
+
+
+def test_targeted_generation_auto_analyzes_unanalyzed_item(tmp_path, monkeypatch):
+    from app import content_workflow
+    from app.config import Settings
+
+    db = f"sqlite:///{tmp_path / 'content.db'}"
+    connection = connect(db)
+    problem = Problem(source="reddit", external_id="r2", title="Unanalyzed problem", url="https://example.com", body="Useful context", discovered_at=datetime.now(timezone.utc))
+    save_problem(connection, problem)
+    pid = int(connection.execute("SELECT id FROM problems WHERE external_id='r2'").fetchone()["id"])
+    connection.close()
+
+    analysis = ProblemAnalysis("pain", "audience", "cause", "angle", ["h1", "h2", "h3"], [])
+    class FakeClient:
+        def analyze(self, problem):
+            return analysis
+    monkeypatch.setattr(content_workflow, "create_ai_client", lambda settings: FakeClient())
+    monkeypatch.setattr(content_workflow, "_generate", lambda client, settings, problem, analysis: type("Draft", (), {
+        "title": "Generated", "body": "Generated body", "hashtags": ["ai"], "call_to_action": "Thoughts?", "confidence": 90
+    })())
+
+    settings = Settings(database_url=db, gemini_api_key="test-key")
+    result = content_workflow.generate_for_problem(settings, pid)
+    assert result["generated"] == 1
+    check = connect(db)
+    try:
+        assert check.execute("SELECT COUNT(*) AS n FROM problem_analyses WHERE problem_id=?", (pid,)).fetchone()["n"] == 1
+        assert check.execute("SELECT COUNT(*) AS n FROM content_drafts WHERE problem_id=?", (pid,)).fetchone()["n"] == 1
+    finally:
+        check.close()
