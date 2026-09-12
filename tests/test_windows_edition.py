@@ -31,8 +31,10 @@ def test_windows_updater_verifies_checksum_before_installing():
     assert "stop-agent.ps1" in update
 
 
-def test_installer_preserves_programdata_during_upgrade():
+def test_installer_metadata_and_upgrade_safety():
     content = INSTALLER.read_text(encoding="utf-8")
+    assert '#define AppVersion "1.2.2"' in content
+    assert 'OutputBaseFilename=AI-Social-Agent-Setup' in content
     assert "PrepareToInstall" in content
     assert "stop-agent.ps1" in content
     assert "Persistent ProgramData is deliberately NOT deleted during upgrades." in content
