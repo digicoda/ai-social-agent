@@ -56,6 +56,7 @@ class IntelligenceResult:
     assignments: int = 0
     opportunities: int = 0
     failed: int = 0
+    skipped: int = 0
 
 
 def opportunity_score(problem: Problem, analysis: ProblemAnalysis, cluster_size: int = 1) -> int:
@@ -93,16 +94,25 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
-def _problem_rows(connection: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
-    return connection.execute("SELECT * FROM problems ORDER BY score DESC, discovered_at DESC LIMIT ?", (limit,)).fetchall()
-
-
 def _problem(row: sqlite3.Row) -> Problem:
     return Problem(
         source=row["source"], external_id=row["external_id"], title=row["title"], url=row["url"],
         summary=row["summary"], body=row["body"], tags=json.loads(row["tags"]), score=int(row["score"]),
         comments=int(row["comments"]), published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None,
         discovered_at=datetime.fromisoformat(row["discovered_at"]), metadata=json.loads(row["metadata"]),
+    )
+
+
+def _analysis_from_row(row: sqlite3.Row) -> ProblemAnalysis:
+    return ProblemAnalysis(
+        pain_point=row["pain_point"], audience=row["audience"], root_cause=row["root_cause"],
+        solution_angle=row["solution_angle"], hooks=json.loads(row["hooks"]), risks=json.loads(row["risks"]),
+        confidence=int(row["confidence"]), category=row["category"], intent=row["intent"],
+        sentiment=row["sentiment"], severity=int(row["severity"]), frequency_signal=int(row["frequency_signal"]),
+        trend_signal=int(row["trend_signal"]), content_gap=int(row["content_gap"]),
+        opportunity_score=int(row["opportunity_score"]), trend_label=row["trend_label"],
+        related_topics=json.loads(row["related_topics"]), recommended_formats=json.loads(row["recommended_formats"]),
+        evidence=json.loads(row["evidence"]),
     )
 
 
@@ -130,6 +140,61 @@ def _save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: Pr
     )
 
 
+def _cluster_signature(problem: Problem, analysis: ProblemAnalysis) -> str:
+    return " ".join([problem.title, analysis.pain_point, *analysis.related_topics])
+
+
+def _existing_canonical(connection: sqlite3.Connection) -> list[tuple[int, Problem, ProblemAnalysis]]:
+    rows = connection.execute("""
+        SELECT i.*, p.source, p.external_id, p.title, p.url, p.summary, p.body, p.tags, p.score,
+               p.comments, p.published_at, p.discovered_at, p.metadata
+        FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
+        WHERE i.duplicate_of IS NULL
+        ORDER BY p.discovered_at DESC
+    """).fetchall()
+    return [(int(row["problem_id"]), _problem(row), _analysis_from_row(row)) for row in rows]
+
+
+def _assign_cluster(connection: sqlite3.Connection, problem: Problem, analysis: ProblemAnalysis) -> int:
+    signature = _cluster_signature(problem, analysis)
+    existing = connection.execute("""
+        SELECT i.cluster_id, p.title, i.pain_point, i.related_topics
+        FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
+        WHERE i.cluster_id IS NOT NULL
+        ORDER BY i.analyzed_at DESC
+    """).fetchall()
+    best_cluster = None
+    best_similarity = 0.0
+    for row in existing:
+        related = json.loads(row["related_topics"] or "[]")
+        similarity = semantic_similarity(signature, " ".join([row["title"], row["pain_point"], *related]))
+        if similarity >= 0.34 and similarity > best_similarity:
+            best_cluster, best_similarity = int(row["cluster_id"]), similarity
+    if best_cluster is not None:
+        return best_cluster
+
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = connection.execute(
+        "INSERT INTO ai_clusters (label, summary, member_count, opportunity_score, trend_label, content_angle, created_at, updated_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?)",
+        (analysis.pain_point[:160] or problem.title[:160], "Incremental research cluster", analysis.trend_label, analysis.solution_angle, now, now),
+    )
+    return int(cursor.lastrowid)
+
+
+def _refresh_cluster(connection: sqlite3.Connection, cluster_id: int) -> None:
+    rows = connection.execute("SELECT * FROM ai_intelligence WHERE cluster_id=?", (cluster_id,)).fetchall()
+    if not rows:
+        return
+    analyses = [_analysis_from_row(row) for row in rows]
+    opportunities = [int(row["opportunity_score"]) for row in rows]
+    trend = Counter(a.trend_label for a in analyses).most_common(1)[0][0]
+    now = datetime.now(timezone.utc).isoformat()
+    connection.execute(
+        "UPDATE ai_clusters SET member_count=?, opportunity_score=?, trend_label=?, content_angle=?, updated_at=? WHERE id=?",
+        (len(rows), round(sum(opportunities) / len(opportunities)), trend, analyses[0].solution_angle, now, cluster_id),
+    )
+
+
 def run_intelligence(settings: Settings, limit: int = 100, client_factory: Callable[[Settings], AIAnalysisClient] | None = None) -> IntelligenceResult:
     if not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500")
@@ -138,54 +203,66 @@ def run_intelligence(settings: Settings, limit: int = 100, client_factory: Calla
     connection = connect(settings.database_url)
     try:
         _ensure_schema(connection)
-        rows = _problem_rows(connection, limit)
-        canonical: list[tuple[int, Problem]] = []
-        duplicate_map: dict[int, int] = {}
+        rows = connection.execute("""
+            SELECT p.* FROM problems p
+            LEFT JOIN ai_intelligence i ON i.problem_id=p.id
+            WHERE i.problem_id IS NULL
+            ORDER BY p.score DESC, p.discovered_at DESC LIMIT ?
+        """, (limit,)).fetchall()
+        result.processed = len(rows)
+        result.skipped = connection.execute("SELECT COUNT(*) FROM problems p JOIN ai_intelligence i ON i.problem_id=p.id").fetchone()[0]
+        if not rows:
+            return result
+
+        existing = _existing_canonical(connection)
+        existing_by_id = {cid: (cp, ca) for cid, cp, ca in existing}
         problems_by_id = {int(row["id"]): _problem(row) for row in rows}
+        canonical_new: list[tuple[int, Problem]] = []
+        duplicate_map: dict[int, int] = {}
         for row in rows:
-            pid = int(row["id"]); problem = problems_by_id[pid]; result.processed += 1
-            duplicate_of = next((cid for cid, cp in canonical if semantic_similarity(problem.title, cp.title) >= 0.72), None)
-            if duplicate_of is None: canonical.append((pid, problem))
-            else: duplicate_map[pid] = duplicate_of; result.duplicates += 1
+            pid = int(row["id"])
+            problem = problems_by_id[pid]
+            candidates = [(cid, cp) for cid, cp, _ in existing] + [(nid, np) for nid, np in canonical_new]
+            duplicate_of = next((cid for cid, cp in candidates if semantic_similarity(problem.title, cp.title) >= 0.72), None)
+            if duplicate_of is None:
+                canonical_new.append((pid, problem))
+            else:
+                duplicate_map[pid] = duplicate_of
+                result.duplicates += 1
 
         analyses: dict[int, ProblemAnalysis] = {}
-        for pid, problem in canonical:
+        for pid, problem in canonical_new:
             try:
-                analyses[pid] = client.analyze(problem); result.analyzed += 1
+                analyses[pid] = client.analyze(problem)
+                result.analyzed += 1
             except Exception:
                 result.failed += 1
 
-        groups: list[dict] = []
+        cluster_ids: set[int] = set()
+        cluster_for: dict[int, int] = {}
         for pid, analysis in analyses.items():
-            problem = problems_by_id[pid]; signature = " ".join([problem.title, analysis.pain_point, *analysis.related_topics])
-            chosen = None; best = 0.0
-            for group in groups:
-                sim = semantic_similarity(signature, group["signature"])
-                if sim >= 0.34 and sim > best: chosen, best = group, sim
-            if chosen is None:
-                chosen = {"signature": signature, "members": [], "analyses": []}; groups.append(chosen)
-            chosen["members"].append(pid); chosen["analyses"].append(analysis)
+            cluster_id = _assign_cluster(connection, problems_by_id[pid], analysis)
+            cluster_ids.add(cluster_id)
+            cluster_for[pid] = cluster_id
+            _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, 1), None, cluster_id)
 
-        connection.execute("DELETE FROM ai_clusters")
-        now = datetime.now(timezone.utc).isoformat(); cluster_for: dict[int, int] = {}
-        for group in groups:
-            members = group["members"]; analyses_in_group = group["analyses"]
-            label = analyses_in_group[0].pain_point[:160] or problems_by_id[members[0]].title[:160]
-            avg_score = round(sum(opportunity_score(problems_by_id[pid], analyses[pid], len(members)) for pid in members) / len(members))
-            trend = Counter(a.trend_label for a in analyses_in_group).most_common(1)[0][0]
-            intent = Counter(a.intent for a in analyses_in_group).most_common(1)[0][0]
-            cursor = connection.execute("INSERT INTO ai_clusters (label, summary, member_count, opportunity_score, trend_label, content_angle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (label, f"{len(members)} related research items; dominant intent: {intent}", len(members), avg_score, trend, analyses_in_group[0].solution_angle, now, now))
-            cluster_id = int(cursor.lastrowid); result.clusters += 1; result.assignments += len(members)
-            if avg_score >= 70: result.opportunities += 1
-            for pid in members: cluster_for[pid] = cluster_id
-
-        for pid, analysis in analyses.items():
-            cluster_size = sum(1 for member in cluster_for if cluster_for[member] == cluster_for[pid])
-            _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, cluster_size), None, cluster_for.get(pid))
         for pid, canonical_id in duplicate_map.items():
-            if canonical_id in analyses:
-                analysis = analyses[canonical_id]
-                _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[canonical_id], analysis), canonical_id, cluster_for.get(canonical_id))
+            analysis = analyses.get(canonical_id) or existing_by_id.get(canonical_id, (None, None))[1]
+            if analysis is None:
+                continue
+            cluster_id = cluster_for.get(canonical_id)
+            if cluster_id is None:
+                cluster_row = connection.execute("SELECT cluster_id FROM ai_intelligence WHERE problem_id=?", (canonical_id,)).fetchone()
+                cluster_id = int(cluster_row["cluster_id"]) if cluster_row and cluster_row["cluster_id"] else None
+            if cluster_id:
+                cluster_ids.add(cluster_id)
+            _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, 1), canonical_id, cluster_id)
+
+        for cluster_id in cluster_ids:
+            _refresh_cluster(connection, cluster_id)
+        result.clusters = len(cluster_ids)
+        result.assignments = len(cluster_for)
+        result.opportunities = sum(1 for pid, analysis in analyses.items() if opportunity_score(problems_by_id[pid], analysis, 1) >= 70)
         connection.commit()
     finally:
         connection.close()
