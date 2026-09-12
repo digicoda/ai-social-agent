@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from datetime import datetime, timezone
@@ -34,5 +35,6 @@ def fetch_web(query: str, limit: int = 10, timeout: float = 15.0) -> list[Proble
         if not title or not href.startswith(("http://", "https://")):
             continue
         now = datetime.now(timezone.utc)
-        results.append(Problem(source="web", external_id="web:" + str(abs(hash(href))), title=title, url=href, summary=body[:500], body=body, tags=[], score=0, comments=0, published_at=now, discovered_at=now, metadata={"provider": "DuckDuckGo HTML"}))
+        external_id = "web:" + hashlib.sha1(href.encode("utf-8")).hexdigest()[:20]
+        results.append(Problem(source="web", external_id=external_id, title=title, url=href, summary=body[:500], body=body, tags=[], score=0, comments=0, published_at=now, discovered_at=now, metadata={"provider": "DuckDuckGo HTML"}))
     return results
