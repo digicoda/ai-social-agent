@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     gemini_timeout_seconds: float = 30.0
+    humanize_content: bool = True
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
@@ -68,6 +69,7 @@ def get_settings() -> Settings:
         "gemini_model": base.gemini_model,
         "openai_model": base.openai_model,
         "huggingface_model": base.huggingface_model,
+        "humanize_content": cfg.get("humanize_content", base.humanize_content),
         "database_url": profile.get("database_url") or base.database_url,
     }
     provider = str(cfg.get("ai_provider") or base.ai_provider).lower()

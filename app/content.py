@@ -7,6 +7,7 @@ import httpx
 from .ai import ProblemAnalysis
 from .config import Settings
 from .database import connect, get_analysis, list_problems, save_draft
+from .humanize import humanize_content
 
 
 @dataclass(slots=True)
@@ -56,6 +57,18 @@ Risks: {json.dumps(analysis.risks, ensure_ascii=False)}
         raise ContentGenerationError("Gemini returned an invalid content payload") from exc
 
 
+def _apply_human_quality(client: httpx.Client, settings: Settings, draft: ContentDraft) -> ContentDraft:
+    if not settings.humanize_content:
+        return draft
+    try:
+        edited, _report = humanize_content(client, settings, draft)
+        return edited
+    except (httpx.HTTPError, ContentGenerationError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        # Never discard an otherwise valid generated draft because the optional
+        # editorial pass is temporarily unavailable.
+        return draft
+
+
 def _content_analysis(connection, problem_id: int) -> tuple[ProblemAnalysis, str] | None:
     legacy = get_analysis(connection, problem_id)
     if legacy is not None:
@@ -87,6 +100,7 @@ def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
                 analysis, _decision = analyzed
                 try:
                     draft = _generate(client, settings, problem, analysis)
+                    draft = _apply_human_quality(client, settings, draft)
                     save_draft(connection, problem_id, "generic", draft.title, draft.body, draft.hashtags, draft.call_to_action, draft.confidence); generated += 1
                 except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError): failed += 1
         finally: connection.close()
