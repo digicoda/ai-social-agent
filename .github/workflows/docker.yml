@@ -34,20 +34,42 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test container health and dashboard
         run: |
+          set -o pipefail
           docker run -d --rm --name ai-social-agent-smoke -p 18000:8000 \
             -e ADMIN_USERNAME="$ADMIN_USERNAME" \
             -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
             -e SESSION_SECRET="$SESSION_SECRET" \
             ai-social-agent:test
           trap 'docker stop ai-social-agent-smoke >/dev/null 2>&1 || true' EXIT
+          healthy=0
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
+              healthy=1
               break
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:18000/dashboard | grep -q 'AI Social Agent'
-          curl --fail --silent -X POST http://127.0.0.1:18000/dashboard/login \
+          if [ "$healthy" -ne 1 ]; then
+            echo 'Health endpoint did not become ready.'
+            docker ps -a --filter name=ai-social-agent-smoke
+            docker logs ai-social-agent-smoke || true
+            exit 1
+          fi
+          echo 'Health endpoint: OK'
+          payload=$(printf '{"username":"%s","password":"%s"}' "$ADMIN_USERNAME" "$ADMIN_PASSWORD")
+          login_code=$(curl --silent --show-error -o /tmp/ai-social-agent-login.json -w '%{http_code}' -c /tmp/ai-social-agent-cookies.txt -X POST http://127.0.0.1:18000/dashboard/login \
             -H 'Content-Type: application/json' \
-            -d '{"username":"ci-admin","password":"ci-password"}' | grep -q 'authenticated'
+            -H 'Origin: http://127.0.0.1:18000' \
+            -d "$payload")
+          echo "Login HTTP status: $login_code"
+          echo 'Login response:'
+          cat /tmp/ai-social-agent-login.json
+          echo
+          echo 'Container logs after login attempt:'
+          docker logs ai-social-agent-smoke || true
+          test "$login_code" = "200"
+          grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true' /tmp/ai-social-agent-login.json
+          dashboard_body=$(curl --fail --silent --show-error -b /tmp/ai-social-agent-cookies.txt http://127.0.0.1:18000/dashboard)
+          printf '%s' "$dashboard_body" | grep -q 'AI Social Agent'
+          echo 'Authenticated dashboard: OK'
           docker logs ai-social-agent-smoke
