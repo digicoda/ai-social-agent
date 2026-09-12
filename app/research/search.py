@@ -46,51 +46,24 @@ def _normalize(text: str) -> str:
 
 def _classify(text: str) -> tuple[str, str]:
     text = _normalize(text)
-    category_rules = {
-        "wordpress": ("wordpress", "elementor", "woocommerce"),
-        "ai": (" ai ", "artificial intelligence", "llm", "gemini", "chatgpt", "machine learning"),
-        "development": ("python", "php", "javascript", "api", "code", "developer", "programming"),
-        "security": ("security", "vulnerability", "cve", "hack", "breach"),
-        "seo": ("seo", "search engine", "ranking", "backlink"),
-        "marketing": ("marketing", "campaign", "conversion", "ads", "social media"),
-        "ecommerce": ("ecommerce", "e commerce", "shopify", "store", "checkout", "cart"),
-        "business": ("business", "startup", "revenue", "customer", "sales"),
-        "design": ("design", "ui", "ux", "frontend"),
-        "productivity": ("productivity", "workflow", "automation", "task", "time saving"),
-        "education": ("course", "learning", "tutorial", "student", "education"),
-        "finance": ("finance", "fintech", "payment", "bank", "investment"),
-        "news": ("breaking", "announcement", "released", "release", "news"),
-    }
+    category_rules = {"wordpress": ("wordpress", "elementor", "woocommerce"), "ai": (" ai ", "artificial intelligence", "llm", "gemini", "chatgpt", "machine learning"), "development": ("python", "php", "javascript", "api", "code", "developer", "programming"), "security": ("security", "vulnerability", "cve", "hack", "breach"), "seo": ("seo", "search engine", "ranking", "backlink"), "marketing": ("marketing", "campaign", "conversion", "ads", "social media"), "ecommerce": ("ecommerce", "e commerce", "shopify", "store", "checkout", "cart"), "business": ("business", "startup", "revenue", "customer", "sales"), "design": ("design", "ui", "ux", "frontend"), "productivity": ("productivity", "workflow", "automation", "task", "time saving"), "education": ("course", "learning", "tutorial", "student", "education"), "finance": ("finance", "fintech", "payment", "bank", "investment"), "news": ("breaking", "announcement", "released", "release", "news")}
     category = "other"
     for name, terms in category_rules.items():
-        if any(term.strip() in text for term in terms):
-            category = name
-            break
-    if re.search(r"\bhow (do|can|could|would) i\b|\bhow to\b|\bwhy (does|is|are|do|did|can)\b|\bwhat (is|are|does)\b|\banyone know\b|\bhelp me\b", text):
-        return category, "question"
-    intent_rules = (
-        ("bug", ("bug", "error", "exception", "crash", "fails", "failed", "broken", "fatal")),
-        ("complaint", ("hate", "frustrated", "annoying", "terrible", "disappointed", "complaint")),
-        ("feature_request", ("feature request", "would be nice", "please add", "support for", "request")),
-        ("tutorial", ("tutorial", "guide", "step by step")),
-        ("review", ("review", "rating", "experience with", "worth it")),
-        ("opinion", ("i think", "opinion", "thoughts on", "what do you think")),
-        ("trend", ("trending", "trend", "growing", "rising", "new in")),
-    )
+        if any(term.strip() in text for term in terms): category = name; break
+    if re.search(r"\bhow (do|can|could|would) i\b|\bhow to\b|\bwhy (does|is|are|do|did|can)\b|\bwhat (is|are|does)\b|\banyone know\b|\bhelp me\b", text): return category, "question"
+    intent_rules = (("bug", ("bug", "error", "exception", "crash", "fails", "failed", "broken", "fatal")), ("complaint", ("hate", "frustrated", "annoying", "terrible", "disappointed", "complaint")), ("feature_request", ("feature request", "would be nice", "please add", "support for", "request")), ("tutorial", ("tutorial", "guide", "step by step")), ("review", ("review", "rating", "experience with", "worth it")), ("opinion", ("i think", "opinion", "thoughts on", "what do you think")), ("trend", ("trending", "trend", "growing", "rising", "new in")))
     for intent, terms in intent_rules:
-        if any(term in text for term in terms):
-            return category, intent
-    if any(term in text for term in ("problem", "pain point", "pain", "issue")):
-        return category, "problem"
+        if any(term in text for term in terms): return category, intent
+    if any(term in text for term in ("problem", "pain point", "pain", "issue")): return category, "problem"
     return category, "opportunity"
 
 def _sentiment(text: str) -> str:
-    negative = ("broken", "error", "bug", "bad", "hate", "frustrated", "annoying", "terrible", "failed", "problem", "issue", "pain")
+    negative = ("broken", "error", "bug", "bad", "hate", "frustrated", "annoying", "terrible", "failed", "problem", "issue", "pain", "fatal", "security", "breach", "data loss", "blocked")
     positive = ("great", "good", "love", "helpful", "success", "working", "excellent", "easy")
     neg = sum(text.count(word) for word in negative)
     pos = sum(text.count(word) for word in positive)
-    if neg >= pos + 2: return "negative"
-    if pos >= neg + 2: return "positive"
+    if neg > pos: return "negative"
+    if pos > neg: return "positive"
     return "neutral"
 
 def _severity(text: str, intent: str) -> int:
@@ -105,8 +78,7 @@ def _relevance(problem: Problem, query: str) -> int:
     if not query.strip(): return 70
     terms = {x for x in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())}
     if not terms: return 70
-    text = _text(problem)
-    hits = sum(1 for term in terms if term in text)
+    text = _text(problem); hits = sum(1 for term in terms if term in text)
     return min(100, 35 + round(65 * hits / len(terms)))
 
 def _score(problem: Problem, relevance: int, intent: str, severity: int) -> tuple[int, int, int]:
@@ -122,7 +94,7 @@ def _within_date(problem: Problem, days: int | None) -> bool:
 
 def _dedup_key(problem: Problem) -> str:
     normalized = _normalize(problem.title)
-    normalized = re.sub(r"\b(how|why|what|help|issue|problem|question|error)\b", " ", normalized)
+    normalized = re.sub(r"\b(how|why|what|help|issue|problem|question|error|i|do|can|could|would)\b", " ", normalized)
     return " ".join(sorted(set(normalized.split())))
 
 def _cluster(items: list[SearchItem]) -> list[dict[str, Any]]:
@@ -141,16 +113,8 @@ def _cluster(items: list[SearchItem]) -> list[dict[str, Any]]:
 def search_research(settings: Settings, *, query: str = "", sources: list[str] | None = None, category: str = "all", intent: str = "all", time_range: str = "30d", limit: int = 50) -> dict[str, Any]:
     selected = [s for s in (sources or list(SUPPORTED_SOURCES)) if s in SUPPORTED_SOURCES]
     days = TIME_RANGES.get(time_range)
-    fetchers: dict[str, Callable[[], list[Problem]]] = {
-        "github": lambda: fetch_github_issues(query=(f"{query} is:issue is:open" if query.strip() else DEFAULT_QUERY), limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds),
-        "reddit": lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds),
-        "stackoverflow": lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds),
-        "rss": lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source),
-    }
-    items: list[SearchItem] = []
-    failed: list[str] = []
-    seen: set[str] = set()
-    query_terms = [term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())]
+    fetchers: dict[str, Callable[[], list[Problem]]] = {"github": lambda: fetch_github_issues(query=(f"{query} is:issue is:open" if query.strip() else DEFAULT_QUERY), limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds), "reddit": lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds), "stackoverflow": lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds), "rss": lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source)}
+    items: list[SearchItem] = []; failed: list[str] = []; seen: set[str] = set(); query_terms = [term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())]
     db = connect(settings.database_url)
     try:
         for source in selected:
@@ -164,16 +128,11 @@ def search_research(settings: Settings, *, query: str = "", sources: list[str] |
                     if intent != "all" and classified_intent != intent: continue
                     dedup_key = _dedup_key(problem)
                     if dedup_key in seen: continue
-                    seen.add(dedup_key)
-                    save_problem(db, problem)
-                    sentiment = _sentiment(text)
-                    severity = _severity(text, classified_intent)
-                    relevance, opportunity, trend = _score(problem, _relevance(problem, query), classified_intent, severity)
+                    seen.add(dedup_key); save_problem(db, problem)
+                    sentiment = _sentiment(text); severity = _severity(text, classified_intent); relevance, opportunity, trend = _score(problem, _relevance(problem, query), classified_intent, severity)
                     items.append(SearchItem(source, problem.external_id, problem.title, problem.url, problem.body, problem.tags, problem.score, problem.comments, problem.published_at.isoformat() if problem.published_at else None, classified_category, classified_intent, relevance, opportunity, trend, sentiment, severity))
-            except Exception:
-                failed.append(source)
-    finally:
-        db.close()
+            except Exception: failed.append(source)
+    finally: db.close()
     items.sort(key=lambda x: (x.opportunity, x.relevance, x.trend, x.severity), reverse=True)
     return {"items": [asdict(item) for item in items[:limit]], "total": len(items), "failed_sources": failed, "sources": selected, "clusters": _cluster(items), "filters": {"query": query, "category": category, "intent": intent, "time_range": time_range}}
 
