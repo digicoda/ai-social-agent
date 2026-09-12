@@ -25,7 +25,12 @@ def _settings(tmp_path):
 def _draft(settings, status: str = "pending_approval") -> int:
     connection = connect(settings.database_url)
     try:
-        draft_id = save_draft(connection, 1, "generic", "Test title", "Test body", ["test"], "", 90)
+        connection.execute(
+            "INSERT INTO problems (source, external_id, title, url, discovered_at, fingerprint) VALUES (?, ?, ?, ?, ?, ?)",
+            ("test", "task8", "Test problem", "https://example.com/task8", datetime.now(timezone.utc).isoformat(), "task8-fingerprint"),
+        )
+        problem_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+        draft_id = save_draft(connection, problem_id, "generic", "Test title", "Test body", ["test"], "", 90)
         if status != "pending_approval":
             connection.execute("UPDATE content_drafts SET status = ? WHERE id = ?", (status, draft_id))
             connection.commit()
@@ -94,7 +99,7 @@ def test_reschedule_rejects_published_or_running_jobs(tmp_path):
         reschedule_draft(settings, schedule_id, _future(60))
 
 
-def test_worker_rejects_unapproved_draft_and_never_calls_publisher(tmp_path, monkeypatch):
+def test_worker_rejects_unapproved_draft_and_never_marks_published(tmp_path, monkeypatch):
     settings = _settings(tmp_path)
     draft_id = _draft(settings, "pending_approval")
     connection = connect(settings.database_url)
