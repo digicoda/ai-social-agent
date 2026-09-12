@@ -44,5 +44,15 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> Settings:
+def _base_settings() -> Settings:
     return Settings()
+
+
+def get_settings() -> Settings:
+    base = _base_settings()
+    try:
+        from .profiles import active_profile_settings
+        profile = active_profile_settings(base)
+        return profile if profile is not None else base
+    except (ImportError, ValueError, RuntimeError):
+        return base
