@@ -30,26 +30,78 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: '3.11'
+
       - name: Install dependencies
+        shell: pwsh
         run: python -m pip install -r requirements.txt
+
       - name: Run Python tests
+        shell: pwsh
         run: python -m pytest -q
+
       - name: Generate branded Windows icon
         shell: pwsh
-        run: python windows/generate_icon.py
+        run: python installer/create_icon.py
+
       - name: Build installer
-        shell: pwsh
-        run: ./installer/build.ps1
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: installer/AI-Social-Agent.iss
+          options: /O+
+
       - name: Verify installer and icon payload
         shell: pwsh
-        run: ./installer/verify.ps1
+        run: |
+          if (-not (Test-Path installer/output/AI-Social-Agent-Setup.exe)) { throw 'Installer was not created.' }
+          if (-not (Test-Path installer/AI-Social-Agent.ico)) { throw 'Branded ICO was not generated.' }
+          Write-Host "Installer: $((Get-Item installer/output/AI-Social-Agent-Setup.exe).Length) bytes"
+          Write-Host "Icon: $((Get-Item installer/AI-Social-Agent.ico).Length) bytes"
+
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: AI-Social-Agent-Windows-Installer
-          path: installer/dist/AI-Social-Agent-Setup.exe
+          path: installer/output/AI-Social-Agent-Setup.exe
           if-no-files-found: error
+          retention-days: 7
+
+  publish-v1-2-2:
+    if: github.ref == 'refs/heads/v1.2.2' && github.event_name == 'push'
+    needs: build-installer
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: AI-Social-Agent-Windows-Installer
+          path: release
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash release/AI-Social-Agent-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  AI-Social-Agent-Setup.exe" | Set-Content release/AI-Social-Agent-Setup.exe.sha256
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v1.2.2 --repo "${{ github.repository }}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create v1.2.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
+          }
+          gh release upload v1.2.2 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
+          gh release edit v1.2.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
+
+# Final installer verification trigger.
