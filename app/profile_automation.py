@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -20,89 +21,216 @@ def _profile_settings(settings: Settings, profile: dict) -> Settings:
     provider = str(cfg.get("ai_provider") or settings.ai_provider)
     model = str(cfg.get("ai_model") or "")
     values["ai_provider"] = provider
-    if provider == "gemini" and model: values["gemini_model"] = model
-    elif provider == "openai" and model: values["openai_model"] = model
-    elif provider == "huggingface" and model: values["huggingface_model"] = model
+    if provider == "gemini" and model:
+        values["gemini_model"] = model
+    elif provider == "openai" and model:
+        values["openai_model"] = model
+    elif provider == "huggingface" and model:
+        values["huggingface_model"] = model
     return settings.model_copy(update=values)
 
 
 def _next_run(profile: dict, now: datetime) -> str:
     cfg = profile["config"]
-    try: tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
-    except Exception: tz = timezone.utc
+    try:
+        tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
+    except Exception:
+        tz = timezone.utc
     local = now.astimezone(tz)
-    try: hour, minute = [int(x) for x in str(cfg.get("daily_time") or "09:00").split(":", 1)]
-    except Exception: hour, minute = 9, 0
+    try:
+        hour, minute = [int(x) for x in str(cfg.get("daily_time") or "09:00").split(":", 1)]
+    except Exception:
+        hour, minute = 9, 0
     candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if candidate <= local: candidate += timedelta(days=1)
+    if candidate <= local:
+        candidate += timedelta(days=1)
     return candidate.astimezone(timezone.utc).isoformat()
 
 
+def _ensure_pipeline_schema(connection) -> None:
+    connection.execute("""CREATE TABLE IF NOT EXISTS pipeline_runs (
+        id TEXT PRIMARY KEY, profile_id INTEGER NOT NULL, started_at TEXT NOT NULL,
+        finished_at TEXT, status TEXT NOT NULL, stages TEXT NOT NULL DEFAULT '{}',
+        error TEXT
+    )""")
+    connection.commit()
+
+
+def _pipeline_start(database_url: str, profile_id: int) -> str:
+    run_id = uuid.uuid4().hex
+    db = connect(database_url)
+    try:
+        _ensure_pipeline_schema(db)
+        db.execute("INSERT INTO pipeline_runs (id, profile_id, started_at, status, stages) VALUES (?, ?, ?, ?, ?)", (run_id, profile_id, datetime.now(timezone.utc).isoformat(), "running", json.dumps({})))
+        db.commit()
+    finally:
+        db.close()
+    return run_id
+
+
+def _pipeline_stage(database_url: str, run_id: str, name: str, status: str, data: dict | None = None) -> None:
+    db = connect(database_url)
+    try:
+        _ensure_pipeline_schema(db)
+        row = db.execute("SELECT stages FROM pipeline_runs WHERE id=?", (run_id,)).fetchone()
+        stages = json.loads(row["stages"] or "{}") if row else {}
+        stages[name] = {"status": status, **(data or {})}
+        db.execute("UPDATE pipeline_runs SET stages=? WHERE id=?", (json.dumps(stages, ensure_ascii=False), run_id))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pipeline_finish(database_url: str, run_id: str, status: str, error: str | None = None) -> None:
+    db = connect(database_url)
+    try:
+        _ensure_pipeline_schema(db)
+        db.execute("UPDATE pipeline_runs SET status=?, finished_at=?, error=? WHERE id=?", (status, datetime.now(timezone.utc).isoformat(), error, run_id))
+        db.commit()
+    finally:
+        db.close()
+
+
 def _tag_problems(database_url: str, profile_id: int, items: list[dict]) -> list[int]:
-    db = connect(database_url); ids=[]
+    db = connect(database_url)
+    ids = []
     try:
         for item in items:
-            row=db.execute("SELECT id, metadata FROM problems WHERE source=? AND external_id=?",(item["source"],item["external_id"])).fetchone()
-            if not row: continue
-            metadata=json.loads(row["metadata"] or "{}"); profiles=metadata.get("profile_ids",[])
-            if profile_id not in profiles: profiles.append(profile_id)
-            metadata["profile_ids"]=profiles; db.execute("UPDATE problems SET metadata=? WHERE id=?",(json.dumps(metadata,ensure_ascii=False),int(row["id"]))); ids.append(int(row["id"]))
-        db.commit(); return ids
-    finally: db.close()
+            row = db.execute("SELECT id, metadata FROM problems WHERE source=? AND external_id=?", (item["source"], item["external_id"])).fetchone()
+            if not row:
+                continue
+            metadata = json.loads(row["metadata"] or "{}")
+            profiles = metadata.get("profile_ids", [])
+            if profile_id not in profiles:
+                profiles.append(profile_id)
+            metadata["profile_ids"] = profiles
+            db.execute("UPDATE problems SET metadata=? WHERE id=?", (json.dumps(metadata, ensure_ascii=False), int(row["id"])))
+            ids.append(int(row["id"]))
+        db.commit()
+        return ids
+    finally:
+        db.close()
 
 
-def _generate_profile_drafts(settings: Settings, problem_ids: list[int], limit: int) -> dict[str,int]:
-    if not problem_ids: return {"generated":0,"skipped":0,"failed":0}
-    db=connect(settings.database_url)
+def _generate_profile_drafts(settings: Settings, problem_ids: list[int], limit: int) -> dict[str, int]:
+    if not problem_ids:
+        return {"generated": 0, "skipped": 0, "failed": 0}
+    db = connect(settings.database_url)
     try:
-        marks=",".join("?" for _ in problem_ids)
-        ids=[int(r["id"]) for r in db.execute(f"SELECT p.id FROM problems p JOIN ai_intelligence a ON a.problem_id=p.id LEFT JOIN content_drafts d ON d.problem_id=p.id AND d.status!='rejected' WHERE p.id IN ({marks}) AND d.id IS NULL ORDER BY a.opportunity_score DESC LIMIT ?",(*problem_ids,limit)).fetchall()]
-    finally: db.close()
-    result={"generated":0,"skipped":0,"failed":0}
+        marks = ",".join("?" for _ in problem_ids)
+        ids = [int(r["id"]) for r in db.execute(f"SELECT p.id FROM problems p JOIN ai_intelligence a ON a.problem_id=p.id LEFT JOIN content_drafts d ON d.problem_id=p.id AND d.status!='rejected' WHERE p.id IN ({marks}) AND d.id IS NULL ORDER BY a.opportunity_score DESC LIMIT ?", (*problem_ids, limit)).fetchall()]
+    finally:
+        db.close()
+    result = {"generated": 0, "skipped": 0, "failed": 0}
     for pid in ids:
         try:
-            item=generate_for_problem(settings,pid)
-            for key in result: result[key]+=int(item.get(key,0))
-        except Exception: result["failed"]+=1
+            item = generate_for_problem(settings, pid)
+            for key in result:
+                result[key] += int(item.get(key, 0))
+        except Exception:
+            result["failed"] += 1
     return result
 
 
 def run_profile_cycle(settings: Settings, profile: dict) -> dict:
-    settings=_profile_settings(settings,profile); cfg=profile["config"]; categories=cfg.get("categories") or ["technology"]; sources=cfg.get("sources") or ["github","reddit","stackoverflow","rss"]
-    all_items=[]; failures=[]
-    for category in categories:
-        try:
-            result=search_research(settings,query=str(cfg.get("query") or ""),sources=sources,category=str(category),intent="all",time_range=str(cfg.get("time_range") or "7d"),limit=min(int(cfg.get("research_limit") or 25),100))
-            all_items.extend(result.get("items",[])); failures.extend(result.get("failed_sources",[]))
-        except Exception as exc: failures.append(f"{category}: {exc}")
-    problem_ids=_tag_problems(settings.database_url,int(profile["id"]),all_items)
-    intelligence=run_intelligence(settings,limit=min(max(len(problem_ids),1),100))
-    generated=_generate_profile_drafts(settings,problem_ids,int(cfg.get("content_limit") or 10))
-    approved=scheduled=0; db=connect(settings.database_url)
+    """Run the complete automatic pipeline for one profile in fixed stage order."""
+    settings = _profile_settings(settings, profile)
+    cfg = profile["config"]
+    profile_id = int(profile["id"])
+    run_id = _pipeline_start(settings.database_url, profile_id)
+    failures: list[str] = []
+    all_items: list[dict] = []
+    problem_ids: list[int] = []
     try:
+        # 1. Research: use only this profile's categories/resources.
+        categories = cfg.get("categories") or ["technology"]
+        sources = cfg.get("sources") or ["github", "reddit", "stackoverflow", "rss", "web"]
+        for category in categories:
+            try:
+                result = search_research(settings, query=str(cfg.get("query") or ""), sources=sources, category=str(category), intent="all", time_range=str(cfg.get("time_range") or "7d"), limit=min(int(cfg.get("research_limit") or 25), 100))
+                all_items.extend(result.get("items", []))
+                failures.extend(result.get("failed_sources", []))
+            except Exception as exc:
+                failures.append(f"{category}: {exc}")
+        problem_ids = _tag_problems(settings.database_url, profile_id, all_items)
+        _pipeline_stage(settings.database_url, run_id, "research", "completed", {"categories": list(categories), "sources": list(sources), "items": len(all_items), "problems": len(problem_ids), "failures": len(failures)})
+
+        # 2. AI analysis: operate on the profile's isolated database.
         if problem_ids:
-            marks=",".join("?" for _ in problem_ids); drafts=db.execute(f"SELECT id FROM content_drafts WHERE problem_id IN ({marks}) AND status='pending_approval' ORDER BY created_at DESC LIMIT 50",tuple(problem_ids)).fetchall()
-        else: drafts=[]
-    finally: db.close()
-    if cfg.get("approval_mode")=="auto":
-        for row in drafts:
-            if set_decision(settings,int(row["id"]),"approved"): approved+=1
-    if cfg.get("auto_publish") and problem_ids:
-        db=connect(settings.database_url)
+            intelligence = run_intelligence(settings, limit=min(max(len(problem_ids), 1), 100))
+            _pipeline_stage(settings.database_url, run_id, "ai_analysis", "completed", {"processed": int(intelligence.processed), "analyzed": int(intelligence.analyzed), "duplicates": int(intelligence.duplicates), "failed": int(intelligence.failed)})
+            if intelligence.failed:
+                failures.append(f"AI analysis failed for {intelligence.failed} item(s)")
+        else:
+            intelligence = type("Result", (), {"processed": 0, "analyzed": 0, "duplicates": 0, "failed": 0})()
+            _pipeline_stage(settings.database_url, run_id, "ai_analysis", "skipped", {"reason": "no research items"})
+
+        # 3. Content generation: only drafts belonging to this research batch.
+        generated = _generate_profile_drafts(settings, problem_ids, int(cfg.get("content_limit") or 10))
+        _pipeline_stage(settings.database_url, run_id, "content_generation", "completed", generated)
+        if generated["failed"]:
+            failures.append(f"content generation failed for {generated['failed']} item(s)")
+
+        # 4. Approval: human mode leaves drafts pending; auto mode approves them.
+        approved = 0
+        db = connect(settings.database_url)
         try:
-            marks=",".join("?" for _ in problem_ids); approved_rows=db.execute(f"SELECT id FROM content_drafts WHERE problem_id IN ({marks}) AND status='approved' ORDER BY created_at DESC LIMIT 20",tuple(problem_ids)).fetchall()
-        finally: db.close()
-        for row in approved_rows:
-            try: schedule_draft(settings,int(row["id"]),str(cfg.get("publish_provider") or "linkedin"),_next_run(profile,datetime.now(timezone.utc)),3,"none",[]); scheduled+=1
-            except Exception as exc: failures.append(f"schedule draft {row['id']}: {exc}")
-    return {"profile_id":int(profile["id"]),"profile":profile["name"],"research_items":len(all_items),"problem_ids":len(problem_ids),"analyzed":int(intelligence.analyzed),"generated":generated["generated"],"approved":approved,"scheduled":scheduled,"failed":len(failures),"failures":failures[:10]}
+            if problem_ids:
+                marks = ",".join("?" for _ in problem_ids)
+                drafts = db.execute(f"SELECT id FROM content_drafts WHERE problem_id IN ({marks}) AND status='pending_approval' ORDER BY created_at DESC LIMIT 50", tuple(problem_ids)).fetchall()
+            else:
+                drafts = []
+        finally:
+            db.close()
+        if cfg.get("approval_mode") == "auto":
+            for row in drafts:
+                if set_decision(settings, int(row["id"]), "approved"):
+                    approved += 1
+            approval_status = "completed"
+        else:
+            approval_status = "pending_human"
+        _pipeline_stage(settings.database_url, run_id, "approval", approval_status, {"queued": len(drafts), "approved": approved, "mode": str(cfg.get("approval_mode") or "human")})
+
+        # 5. Scheduling: only approved drafts are scheduled. Human approval never bypasses this gate.
+        scheduled = 0
+        if problem_ids and cfg.get("auto_publish"):
+            db = connect(settings.database_url)
+            try:
+                marks = ",".join("?" for _ in problem_ids)
+                approved_rows = db.execute(f"SELECT id FROM content_drafts WHERE problem_id IN ({marks}) AND status='approved' ORDER BY created_at DESC LIMIT 20", tuple(problem_ids)).fetchall()
+            finally:
+                db.close()
+            scheduled_for = _next_run(profile, datetime.now(timezone.utc))
+            for row in approved_rows:
+                try:
+                    schedule_draft(settings, int(row["id"]), str(cfg.get("publish_provider") or "linkedin"), scheduled_for, 3, "none", [])
+                    scheduled += 1
+                except Exception as exc:
+                    failures.append(f"schedule draft {row['id']}: {exc}")
+        schedule_status = "completed" if cfg.get("auto_publish") else "disabled"
+        _pipeline_stage(settings.database_url, run_id, "scheduling", schedule_status, {"scheduled": scheduled, "auto_publish": bool(cfg.get("auto_publish"))})
+
+        # Publishing is deliberately performed by the existing worker from schedules.
+        publishing_status = "queued" if scheduled else "waiting_for_schedule"
+        _pipeline_stage(settings.database_url, run_id, "publishing", publishing_status, {"scheduled": scheduled, "provider": str(cfg.get("publish_provider") or "linkedin")})
+        status = "completed_with_warnings" if failures else "completed"
+        _pipeline_finish(settings.database_url, run_id, status, "; ".join(failures[:10]) if failures else None)
+        return {"pipeline_run_id": run_id, "profile_id": profile_id, "profile": profile["name"], "research_items": len(all_items), "problem_ids": len(problem_ids), "analyzed": int(intelligence.analyzed), "generated": generated["generated"], "approved": approved, "scheduled": scheduled, "failed": len(failures), "status": status, "failures": failures[:10]}
+    except Exception as exc:
+        _pipeline_stage(settings.database_url, run_id, "pipeline", "failed", {"error": str(exc)})
+        _pipeline_finish(settings.database_url, run_id, "failed", str(exc))
+        raise
 
 
 def run_due_profile_automation(settings: Settings) -> dict:
-    profiles=due_profiles(settings.database_url); results=[]
+    profiles = due_profiles(settings.database_url)
+    results = []
     for profile in profiles:
         try:
-            result=run_profile_cycle(settings,profile); mark_profile_run(settings.database_url,int(profile["id"]),"success",_next_run(profile,datetime.now(timezone.utc))); results.append(result)
+            result = run_profile_cycle(settings, profile)
+            mark_profile_run(settings.database_url, int(profile["id"]), result.get("status", "success"), _next_run(profile, datetime.now(timezone.utc)))
+            results.append(result)
         except Exception as exc:
-            mark_profile_run(settings.database_url,int(profile["id"]),f"failed: {exc}",_next_run(profile,datetime.now(timezone.utc))); results.append({"profile_id":int(profile["id"]),"profile":profile["name"],"failed":1,"error":str(exc)})
-    return {"profiles":len(profiles),"results":results}
+            mark_profile_run(settings.database_url, int(profile["id"]), f"failed: {exc}", _next_run(profile, datetime.now(timezone.utc)))
+            results.append({"profile_id": int(profile["id"]), "profile": profile["name"], "failed": 1, "status": "failed", "error": str(exc)})
+    return {"profiles": len(profiles), "results": results}
