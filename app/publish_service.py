@@ -12,14 +12,14 @@ def publish_draft(settings: Settings, draft_id: int, provider_name: str, media_p
         row = connection.execute("SELECT id, title, body, hashtags, status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
         if row is None:
             raise PublishingError("draft not found", retryable=False)
-        if row["status"] not in {"approved", "publishing"}:
-            raise PublishingError("only approved drafts can be published", retryable=False)
         previous = existing_published_attempt(connection, draft_id, provider_name)
         if previous is not None:
             if row["status"] in {"approved", "publishing"}:
                 connection.execute("UPDATE content_drafts SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (draft_id,))
                 connection.commit()
             return {"draft_id": draft_id, "provider": provider_name, "remote_id": previous["remote_id"], "url": "", "idempotent": True}
+        if row["status"] not in {"approved", "publishing"}:
+            raise PublishingError("only approved drafts can be published", retryable=False)
     finally:
         connection.close()
 
