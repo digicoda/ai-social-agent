@@ -5,9 +5,38 @@ from typing import Any
 
 import httpx
 
+from .ai import create_ai_client
 from .config import Settings
 from .content import ContentGenerationError, _content_analysis, _generate
-from .database import connect, save_draft
+from .database import connect, save_analysis, save_draft
+from .schemas import Problem
+
+
+def _analyze_if_needed(settings: Settings, db, problem_id: int, problem_row) -> tuple[Any, str]:
+    analyzed = _content_analysis(db, problem_id)
+    if analyzed is not None:
+        return analyzed
+
+    problem = Problem(
+        source=problem_row["source"],
+        external_id=problem_row["external_id"],
+        title=problem_row["title"],
+        url=problem_row["url"],
+        summary=problem_row["summary"],
+        body=problem_row["body"],
+        tags=json.loads(problem_row["tags"]),
+        score=int(problem_row["score"]),
+        comments=int(problem_row["comments"]),
+        published_at=None,
+        discovered_at=__import__("datetime").datetime.fromisoformat(problem_row["discovered_at"]),
+        metadata=json.loads(problem_row["metadata"]),
+    )
+    try:
+        analysis = create_ai_client(settings).analyze(problem)
+    except Exception as exc:
+        raise ContentGenerationError(f"AI analysis failed before content generation: {exc}") from exc
+    save_analysis(db, problem_id, analysis, "create")
+    return analysis, "create"
 
 
 def generate_for_problem(settings: Settings, problem_id: int) -> dict[str, Any]:
@@ -21,17 +50,15 @@ def generate_for_problem(settings: Settings, problem_id: int) -> dict[str, Any]:
         existing = db.execute("SELECT id,status FROM content_drafts WHERE problem_id=? AND status!='rejected' LIMIT 1", (problem_id,)).fetchone()
         if existing:
             return {"generated": 0, "skipped": 1, "failed": 0, "reason": "draft already exists", "draft_id": int(existing["id"])}
-        analyzed = _content_analysis(db, problem_id)
-        if analyzed is None:
-            return {"generated": 0, "skipped": 1, "failed": 0, "reason": "research item has not been AI analyzed"}
-        analysis, decision = analyzed
+        analysis, decision = _analyze_if_needed(settings, db, problem_id, problem)
         if decision == "discard":
             return {"generated": 0, "skipped": 1, "failed": 0, "reason": "AI analysis marked this item as discard"}
-        class ProblemRow:
-            pass
-        p = ProblemRow()
-        for key in ("title", "source", "body"):
-            setattr(p, key, problem[key])
+        p = Problem(
+            source=problem["source"], external_id=problem["external_id"], title=problem["title"], url=problem["url"],
+            summary=problem["summary"], body=problem["body"], tags=json.loads(problem["tags"]), score=int(problem["score"]),
+            comments=int(problem["comments"]), published_at=None,
+            discovered_at=__import__("datetime").datetime.fromisoformat(problem["discovered_at"]), metadata=json.loads(problem["metadata"]),
+        )
         with httpx.Client(timeout=settings.gemini_timeout_seconds) as client:
             draft = _generate(client, settings, p, analysis)
         draft_id = save_draft(db, problem_id, "generic", draft.title, draft.body, draft.hashtags, draft.call_to_action, draft.confidence)
