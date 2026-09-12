@@ -2,17 +2,14 @@ from __future__ import annotations
 
 
 def _install_runtime_hooks() -> None:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException, Request
     from . import profiles
 
     def active_profile_settings(base):
         pid = profiles._ACTIVE_PROFILE.get()
-        if not pid:
-            return None
-        try:
-            return profiles.settings_for_profile(base, profiles.get_profile(base, pid))
-        except Exception:
-            return None
+        if not pid: return None
+        try: return profiles.settings_for_profile(base, profiles.get_profile(base, pid))
+        except Exception: return None
 
     profiles.active_profile_settings = active_profile_settings
     original_init = FastAPI.__init__
@@ -24,21 +21,19 @@ def _install_runtime_hooks() -> None:
         try:
             from .research import search as research_search
             from .websearch import fetch_web
-            import sys, json
+            import sys, json, re
             original_search = research_search.search_research
             supported = tuple(research_search.SUPPORTED_SOURCES)
             if "web" not in supported: research_search.SUPPORTED_SOURCES = supported + ("web",)
 
             def wrapped_search(settings, **kwargs):
-                selected = list(kwargs.get("sources") or research_search.SUPPORTED_SOURCES); use_web = "web" in selected
-                kwargs["sources"] = [x for x in selected if x != "web"]
-                result = original_search(settings, **kwargs); result["sources"] = selected; result.setdefault("source_counts", {}).setdefault("web", 0)
+                selected=list(kwargs.get("sources") or research_search.SUPPORTED_SOURCES); use_web="web" in selected; kwargs["sources"]=[x for x in selected if x!="web"]
+                result=original_search(settings,**kwargs); result["sources"]=selected; result.setdefault("source_counts",{}).setdefault("web",0)
                 if use_web:
                     try:
                         from .database import connect, save_problem
                         from .scoring import score_problem
-                        from .research.search import _within_date, _text, _classify, _severity, _score, _sentiment, _dedup_key
-                        import re
+                        from .research.search import _within_date,_text,_classify,_severity,_score,_sentiment,_dedup_key
                         query=kwargs.get("query",""); days=research_search.TIME_RANGES.get(kwargs.get("time_range","30d")); db=connect(settings.database_url); seen=set()
                         try:
                             for problem in fetch_web(query,limit=settings.research_limit_per_source,timeout=settings.research_timeout_seconds):
@@ -60,39 +55,35 @@ def _install_runtime_hooks() -> None:
             research_search.search_research=wrapped_search
             research_search.search_options=lambda:{"sources":[{"id":"github","name":"GitHub Issues","enabled":True},{"id":"reddit","name":"Reddit","enabled":True},{"id":"stackoverflow","name":"Stack Overflow","enabled":True},{"id":"rss","name":"RSS / News","enabled":True},{"id":"web","name":"Web Search","enabled":True}],"categories":list(research_search.CATEGORIES),"intents":list(research_search.INTENTS),"time_ranges":list(research_search.TIME_RANGES),"modes":["quick","standard","deep"]}
             api=sys.modules.get("app.research.search_api")
-            if api is not None:
-                api.SUPPORTED_SOURCES=research_search.SUPPORTED_SOURCES; api.search_research=wrapped_search; api.search_options=research_search.search_options
+            if api is not None: api.SUPPORTED_SOURCES=research_search.SUPPORTED_SOURCES; api.search_research=wrapped_search; api.search_options=research_search.search_options
 
             from .content import generate_content_for_problem
-            from .intelligence import run_intelligence
             from .database import connect
             from .ai import create_ai_client
             from .schemas import Problem
             from datetime import datetime
-            from . import intelligence as intel
             from .intelligence import _save_analysis, opportunity_score
             @self.post("/content/generate-by-title")
-            def generate_by_title(request, payload: dict):
-                if request.session.get("authenticated") is not True: from fastapi import HTTPException; raise HTTPException(status_code=401,detail="dashboard login required")
+            def generate_by_title(request: Request, payload: dict):
+                if request.session.get("authenticated") is not True: raise HTTPException(status_code=401,detail="dashboard login required")
                 title=str(payload.get("title","")).strip()
-                if not title: from fastapi import HTTPException; raise HTTPException(status_code=400,detail="title is required")
-                settings_module=__import__("app.config",fromlist=["get_settings"]); settings=settings_module.get_settings(); db=connect(settings.database_url)
+                if not title: raise HTTPException(status_code=400,detail="title is required")
+                settings=__import__("app.config",fromlist=["get_settings"]).get_settings(); db=connect(settings.database_url)
                 try:
                     row=db.execute("SELECT * FROM problems WHERE title=? ORDER BY discovered_at DESC LIMIT 1",(title,)).fetchone()
-                    if row is None: from fastapi import HTTPException; raise HTTPException(status_code=404,detail="research result not found")
+                    if row is None: raise HTTPException(status_code=404,detail="research result not found")
                     existing=db.execute("SELECT 1 FROM ai_intelligence WHERE problem_id=?",(int(row["id"]),)).fetchone()
                 finally: db.close()
                 if not existing:
                     problem=Problem(source=row["source"],external_id=row["external_id"],title=row["title"],url=row["url"],summary=row["summary"],body=row["body"],tags=json.loads(row["tags"]),score=int(row["score"]),comments=int(row["comments"]),published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None,discovered_at=datetime.fromisoformat(row["discovered_at"]),metadata=json.loads(row["metadata"]))
-                    client=create_ai_client(settings); analysis=client.analyze(problem); score=opportunity_score(problem,analysis,1); db=connect(settings.database_url)
-                    try:_save_analysis(db,int(row["id"]),analysis,score,None,None);db.commit()
-                    finally:db.close()
+                    analysis=create_ai_client(settings).analyze(problem); db=connect(settings.database_url)
+                    try: _save_analysis(db,int(row["id"]),analysis,opportunity_score(problem,analysis,1),None,None); db.commit()
+                    finally: db.close()
                 return generate_content_for_problem(settings,int(row["id"]))
         except Exception:
             pass
 
-    FastAPI.__init__ = patched_init
-    FastAPI._ai_social_agent_patched = True
+    FastAPI.__init__=patched_init; FastAPI._ai_social_agent_patched=True
 
 
 _install_runtime_hooks()
