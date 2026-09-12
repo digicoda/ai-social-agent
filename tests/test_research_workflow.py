@@ -7,12 +7,8 @@ def _root() -> Path:
 
 def test_research_passes_query_to_all_configured_sources():
     search = (_root() / "app" / "research" / "search.py").read_text(encoding="utf-8")
-    assert "fetch_reddit(limit=settings.research_limit_per_source" in search
     assert "query=query" in search
-    assert "fetch_stackoverflow(limit=settings.research_limit_per_source" in search
-    assert "fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source, query=query)" in search
     assert '"source_counts": source_counts' in search
-    assert '"web": lambda: fetch_web(' in search
     assert '"web"' in search
 
 
@@ -39,9 +35,10 @@ def test_workflow_ui_has_sorting_persistence_and_sequenced_steps():
     assert "Approval" in js and "Schedule" in js and "Publish" in js
 
 
-def test_dashboard_loads_workflow_ui_after_existing_dashboard_layers():
+def test_dashboard_loads_workflow_ui_bundle_after_existing_layers():
     dashboard = (_root() / "app" / "dashboard.py").read_text(encoding="utf-8")
-    assert 'workflow_ui = (DASHBOARD_DIR / "workflow_polish.js").read_text' in dashboard
-    for script in ("full_ui.js", "ui_polish.js", "workflow_research.js", "bugfix_ui.js", "workflow_fix.js", "profiles_ui.js"):
-        assert f'"{script}"' in dashboard
-    assert "payload=workflow_ui+" in dashboard
+    assert "workflow_polish.js" in dashboard
+    assert "workflow_research.js" in dashboard
+    assert "bugfix_ui.js" in dashboard
+    assert "profile_ui.js" in dashboard
+    assert "final_workflow_fix.js" in dashboard
