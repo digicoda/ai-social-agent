@@ -8,6 +8,7 @@ from .database import cancel_schedule, connect, create_schedule, list_schedules
 from .publishing import PublishingError, get_publisher
 
 SUPPORTED_MEDIA = {"none", "image", "document", "video", "multi_image"}
+ACTIVE_SCHEDULE_STATUSES = {"scheduled", "retrying", "running"}
 
 
 def _validate_time(value: str) -> str:
@@ -17,9 +18,10 @@ def _validate_time(value: str) -> str:
         raise ValueError("scheduled_for must be an ISO-8601 datetime") from exc
     if parsed.tzinfo is None:
         raise ValueError("scheduled_for must include a timezone")
+    parsed = parsed.astimezone(timezone.utc)
     if parsed <= datetime.now(timezone.utc):
         raise ValueError("scheduled_for must be in the future")
-    return parsed.astimezone(timezone.utc).isoformat()
+    return parsed.isoformat()
 
 
 def _validate_media(media_type: str, media_paths: list[str] | None) -> list[str]:
@@ -39,6 +41,13 @@ def _validate_media(media_type: str, media_paths: list[str] | None) -> list[str]
     return paths
 
 
+def _draft_status(connection, draft_id: int) -> str:
+    row = connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
+    if row is None:
+        raise ValueError("draft not found")
+    return str(row["status"])
+
+
 def schedule_draft(settings: Settings, draft_id: int, provider: str, scheduled_for: str, max_attempts: int = 3, media_type: str = "none", media_paths: list[str] | None = None) -> dict:
     scheduled_for = _validate_time(scheduled_for)
     if max_attempts < 1 or max_attempts > 10:
@@ -47,16 +56,40 @@ def schedule_draft(settings: Settings, draft_id: int, provider: str, scheduled_f
     get_publisher(settings, provider)
     connection = connect(settings.database_url)
     try:
-        row = connection.execute("SELECT status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
-        if row is None:
-            raise ValueError("draft not found")
-        if row["status"] != "approved":
+        status = _draft_status(connection, draft_id)
+        if status != "approved":
             raise ValueError("only approved drafts can be scheduled")
         existing = connection.execute("SELECT id FROM publish_schedules WHERE draft_id = ? AND provider = ? AND status IN ('scheduled', 'retrying', 'running') LIMIT 1", (draft_id, provider)).fetchone()
         if existing is not None:
             raise ValueError("draft already has an active schedule for this provider")
         schedule_id = create_schedule(connection, draft_id, provider, scheduled_for, max_attempts, media_type, paths)
         return {"schedule_id": schedule_id, "draft_id": draft_id, "provider": provider, "scheduled_for": scheduled_for, "max_attempts": max_attempts, "media_type": media_type, "media_paths": paths}
+    finally:
+        connection.close()
+
+
+def reschedule_draft(settings: Settings, schedule_id: int, scheduled_for: str) -> dict:
+    """Move an active schedule without changing its provider/media configuration."""
+    scheduled_for = _validate_time(scheduled_for)
+    connection = connect(settings.database_url)
+    try:
+        row = connection.execute("SELECT * FROM publish_schedules WHERE id = ?", (schedule_id,)).fetchone()
+        if row is None:
+            raise ValueError("schedule not found")
+        if str(row["status"]) not in {"scheduled", "retrying"}:
+            raise ValueError("only scheduled or retrying jobs can be rescheduled")
+        status = _draft_status(connection, int(row["draft_id"]))
+        if status != "approved":
+            raise ValueError("only schedules for approved drafts can be rescheduled")
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute(
+            "UPDATE publish_schedules SET scheduled_for = ?, status = 'scheduled', last_error = '', updated_at = ? WHERE id = ? AND status IN ('scheduled', 'retrying')",
+            (scheduled_for, now, schedule_id),
+        )
+        connection.commit()
+        if cursor.rowcount != 1:
+            raise ValueError("schedule is no longer active")
+        return {"schedule_id": schedule_id, "draft_id": int(row["draft_id"]), "provider": str(row["provider"]), "scheduled_for": scheduled_for, "status": "scheduled"}
     finally:
         connection.close()
 
