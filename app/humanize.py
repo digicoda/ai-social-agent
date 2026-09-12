@@ -7,7 +7,6 @@ from dataclasses import dataclass
 import httpx
 
 from .config import Settings
-from .content import ContentDraft, ContentGenerationError
 
 
 @dataclass(slots=True)
@@ -39,7 +38,7 @@ def _repeated_phrase_count(text: str) -> int:
     return sum(1 for count in counts.values() if count > 1)
 
 
-def _quality_report(draft: ContentDraft, improvements: list[str]) -> HumanQualityReport:
+def _quality_report(draft, improvements: list[str]) -> HumanQualityReport:
     repeated = _repeated_phrase_count(draft.body)
     sentences = _sentence_count(draft.body)
     avg = _average_sentence_words(draft.body)
@@ -52,12 +51,16 @@ def _quality_report(draft: ContentDraft, improvements: list[str]) -> HumanQualit
     return HumanQualityReport(score, improvements[:8], sentences, avg, repeated)
 
 
-def humanize_content(client: httpx.Client, settings: Settings, draft: ContentDraft) -> tuple[ContentDraft, HumanQualityReport]:
+def humanize_content(client: httpx.Client, settings: Settings, draft) -> tuple[object, HumanQualityReport]:
     """Apply a second editorial pass focused on natural, audience-friendly writing.
 
     This is a quality/editorial transformation, not a detector-evasion routine. It
     must preserve the factual meaning and intent of the generated draft.
     """
+    # Imported lazily because content.py calls this module while defining/loading
+    # ContentDraft; a module-level import would create a circular dependency.
+    from .content import ContentDraft, ContentGenerationError
+
     prompt = f"""Act as a senior human editor for a professional social-media post.
 
 Rewrite the supplied draft so it reads naturally and confidently, as if it was edited by a skilled subject-matter writer. Improve clarity, usefulness, specificity, rhythm, and audience fit while preserving the original factual meaning, claims, topic, and practical advice.
