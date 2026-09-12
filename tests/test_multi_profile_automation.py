@@ -12,3 +12,4 @@ def test_web_search_and_targeted_content_handoff():
     init=(root()/"app/__init__.py").read_text(encoding="utf-8");web=(root()/"app/websearch.py").read_text(encoding="utf-8");fix=(root()/"app/dashboard/workflow_fix.js").read_text(encoding="utf-8");content=(root()/"app/content.py").read_text(encoding="utf-8")
     assert "fetch_web" in init and '"web"' in init and "html.duckduckgo.com/html" in web
     assert "/content/generate-by-title" in init and "Search by Priority" in fix and "def generate_content_for_problem" in content
+# CI trigger: verify the current branch head, including the dashboard loader fix.
