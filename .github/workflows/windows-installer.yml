@@ -44,11 +44,23 @@ jobs:
         shell: pwsh
         run: python -m pytest -q
 
+      - name: Generate branded Windows icon
+        shell: pwsh
+        run: python installer/create_icon.py
+
       - name: Build installer
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
           path: installer/AI-Social-Agent.iss
           options: /O+
+
+      - name: Verify installer and icon payload
+        shell: pwsh
+        run: |
+          if (-not (Test-Path installer/output/AI-Social-Agent-Setup.exe)) { throw 'Installer was not created.' }
+          if (-not (Test-Path installer/AI-Social-Agent.ico)) { throw 'Branded ICO was not generated.' }
+          Write-Host "Installer: $((Get-Item installer/output/AI-Social-Agent-Setup.exe).Length) bytes"
+          Write-Host "Icon: $((Get-Item installer/AI-Social-Agent.ico).Length) bytes"
 
       - name: Upload installer
         uses: actions/upload-artifact@v6
