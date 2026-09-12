@@ -26,6 +26,4 @@ class Problem:
     def fingerprint(self) -> str:
         import hashlib
         normalized = " ".join(self.title.lower().split())
-        # Keep the same topic from different sources available to the AI layer;
-        # source-level duplicate detection still uses (source, external_id).
-        return hashlib.sha256(f"{self.source.lower()}::{normalized}".encode("utf-8")).hexdigest()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
