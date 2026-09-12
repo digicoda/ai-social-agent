@@ -16,7 +16,6 @@ def _install_runtime_hooks() -> None:
 
     profiles.active_profile_settings = active_profile_settings
     original_init = FastAPI.__init__
-
     if getattr(FastAPI, "_ai_social_agent_patched", False):
         return
 
@@ -26,14 +25,14 @@ def _install_runtime_hooks() -> None:
         try:
             from .research import search as research_search
             from .websearch import fetch_web
+            import sys
             original_search = research_search.search_research
-            original_supported = tuple(research_search.SUPPORTED_SOURCES)
-            if "web" not in original_supported:
-                research_search.SUPPORTED_SOURCES = original_supported + ("web",)
+            supported = tuple(research_search.SUPPORTED_SOURCES)
+            if "web" not in supported:
+                research_search.SUPPORTED_SOURCES = supported + ("web",)
 
             def wrapped_search(settings, **kwargs):
-                selected = kwargs.get("sources")
-                selected = list(selected) if selected else list(research_search.SUPPORTED_SOURCES)
+                selected = list(kwargs.get("sources") or research_search.SUPPORTED_SOURCES)
                 use_web = "web" in selected
                 kwargs["sources"] = [x for x in selected if x != "web"]
                 result = original_search(settings, **kwargs)
@@ -42,9 +41,8 @@ def _install_runtime_hooks() -> None:
                 if use_web:
                     try:
                         from .database import connect, save_problem
-                        from .dedup import find_cross_source_duplicate
                         from .scoring import score_problem
-                        from .research.search import _within_date, _text, _classify, _severity, _score, _sentiment, SearchItem, _dedup_key
+                        from .research.search import _within_date, _text, _classify, _severity, _score, _sentiment, _dedup_key
                         import re
                         query = kwargs.get("query", "")
                         days = research_search.TIME_RANGES.get(kwargs.get("time_range", "30d"))
@@ -73,6 +71,11 @@ def _install_runtime_hooks() -> None:
 
             research_search.search_research = wrapped_search
             research_search.search_options = lambda: {"sources":[{"id":"github","name":"GitHub Issues","enabled":True},{"id":"reddit","name":"Reddit","enabled":True},{"id":"stackoverflow","name":"Stack Overflow","enabled":True},{"id":"rss","name":"RSS / News","enabled":True},{"id":"web","name":"Web Search","enabled":True}],"categories":list(research_search.CATEGORIES),"intents":list(research_search.INTENTS),"time_ranges":list(research_search.TIME_RANGES),"modes":["quick","standard","deep"]}
+            api = sys.modules.get("app.research.search_api")
+            if api is not None:
+                api.SUPPORTED_SOURCES = research_search.SUPPORTED_SOURCES
+                api.search_research = wrapped_search
+                api.search_options = research_search.search_options
         except Exception:
             pass
 
