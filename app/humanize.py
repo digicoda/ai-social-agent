@@ -41,7 +41,10 @@ def _repeated_phrase_count(text: str) -> int:
             phrase = " ".join(words[i : i + size])
             counts[phrase] = counts.get(phrase, 0) + 1
         for phrase, count in counts.items():
-            if count > 1 and not any(phrase in longer.split(" ") and len(longer.split(" ")) > size for longer, _ in repeated):
+            if count > 1 and not any(
+                f" {phrase} " in f" {longer} " and len(longer.split()) > size
+                for longer, _ in repeated
+            ):
                 repeated.append((phrase, count))
     return len(repeated)
 
