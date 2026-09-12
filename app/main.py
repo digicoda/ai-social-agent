@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 from .analytics import publishing_history, publishing_stats
 from .analysis import run_analysis
-from .approval import queue, set_decision
+from .approval import history, queue, set_decision
 from .config import get_settings
 from .content import ContentGenerationError
 from .content_workflow import generate_for_problem, generate_from_intelligence
@@ -158,6 +158,11 @@ def approval_queue(request: Request, status: str = "pending_approval", limit: in
     if status not in {"pending_approval", "approved", "rejected", "published"}: raise HTTPException(status_code=400, detail="invalid status")
     if not 1 <= limit <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
     return {"items": queue(get_settings(), status=status, limit=limit)}
+@app.get("/approval/{draft_id}/history")
+def approval_history(draft_id: int, request: Request, limit: int = 25, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request)
+    if not 1 <= limit <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    return {"items": history(get_settings(), draft_id, limit=limit)}
 @app.post("/approval/{draft_id}")
 def approval_decision(draft_id: int, request: Request, payload: ApprovalRequest, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request)
@@ -190,31 +195,3 @@ def publish_video(draft_id: int, payload: VideoPublishRequest, request: Request,
     _authorize(x_api_key, request)
     try: return publish_draft(get_settings(), draft_id, payload.provider, media_paths=[payload.video_path], media_type="video")
     except PublishingError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.post("/schedule/{draft_id}")
-def schedule(draft_id: int, payload: ScheduleRequest, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    try: return schedule_draft(get_settings(), draft_id, payload.provider, payload.scheduled_for, payload.max_attempts, payload.media_type, payload.media_paths)
-    except (ValueError, PublishingError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-@app.get("/schedules")
-def schedule_list(request: Request, status: str | None = None, limit: int = 50, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not 1 <= limit <= 200: raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
-    return {"items": schedules(get_settings(), status=status, limit=limit)}
-@app.delete("/schedule/{schedule_id}")
-def schedule_cancel(schedule_id: int, request: Request, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not cancel_draft_schedule(get_settings(), schedule_id): raise HTTPException(status_code=404, detail="active schedule not found")
-    return {"schedule_id": schedule_id, "status": "cancelled"}
-@app.post("/worker/run")
-def worker_run(request: Request, limit: int | None = None, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request); batch = limit or get_settings().worker_batch_size
-    if not 1 <= batch <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
-    schedules_result = run_due_schedules(get_settings(), limit=batch); automation = run_due_profile_automation(get_settings())
-    return {"schedules": schedules_result, "automation": automation}
-@app.get("/publishing/history")
-def history(request: Request, provider: str | None = None, limit: int = 50, x_api_key: str | None = Header(default=None)) -> dict:
-    _authorize(x_api_key, request)
-    if not 1 <= limit <= 200: raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
-    return {"items": publishing_history(get_settings().database_url, limit=limit, provider=provider)}
-@app.get("/publishing/stats")
-def stats(request: Request, x_api_key: str | None = Header(default=None)) -> dict: _authorize(x_api_key, request); return publishing_stats(get_settings().database_url)
