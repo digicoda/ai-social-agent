@@ -92,6 +92,38 @@ def _content_analysis(connection, problem_id: int) -> tuple[ProblemAnalysis, str
     )
 
 
+def _generate_for_problem(settings: Settings, connection, problem_id: int) -> dict[str, int]:
+    row = connection.execute("SELECT * FROM problems WHERE id = ?", (problem_id,)).fetchone()
+    if row is None:
+        raise ContentGenerationError("research result not found")
+    existing = connection.execute("SELECT 1 FROM content_drafts WHERE problem_id = ? AND status != 'rejected' LIMIT 1", (problem_id,)).fetchone()
+    if existing:
+        return {"generated": 0, "skipped": 1, "failed": 0}
+    analyzed = _content_analysis(connection, problem_id)
+    if analyzed is None:
+        return {"generated": 0, "skipped": 1, "failed": 0, "needs_analysis": 1}
+    analysis, decision = analyzed
+    if decision == "discard":
+        return {"generated": 0, "skipped": 1, "failed": 0}
+    from datetime import datetime
+    from .schemas import Problem
+    problem = Problem(source=row["source"], external_id=row["external_id"], title=row["title"], url=row["url"], summary=row["summary"], body=row["body"], tags=json.loads(row["tags"]), score=int(row["score"]), comments=int(row["comments"]), published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None, discovered_at=datetime.fromisoformat(row["discovered_at"]), metadata=json.loads(row["metadata"]))
+    with httpx.Client(timeout=settings.gemini_timeout_seconds) as client:
+        draft = _generate(client, settings, problem, analysis)
+    draft_id = save_draft(connection, problem_id, "generic", draft.title, draft.body, draft.hashtags, draft.call_to_action, draft.confidence)
+    return {"generated": 1, "skipped": 0, "failed": 0, "draft_id": draft_id}
+
+
+def generate_content_for_problem(settings: Settings, problem_id: int) -> dict[str, int]:
+    if not settings.gemini_api_key:
+        raise ContentGenerationError("GEMINI_API_KEY is not configured")
+    connection = connect(settings.database_url)
+    try:
+        return _generate_for_problem(settings, connection, problem_id)
+    finally:
+        connection.close()
+
+
 def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
     if not settings.gemini_api_key:
         raise ContentGenerationError("GEMINI_API_KEY is not configured")
