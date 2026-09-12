@@ -1,71 +1,133 @@
 # AI Social Agent
 
-Automated technical-content research and social publishing system designed for lightweight shared hosting.
+Automated technical-content research, AI analysis, content generation, approval, scheduling, and social publishing system designed for lightweight deployment.
 
-## Phases 1–4
+## Current implementation status
 
-The system researches technical problems from GitHub Issues, Reddit, Stack Overflow, and RSS/Hacker News; normalizes and deduplicates them; scores and analyzes them with Gemini; clusters related problems; generates content drafts; puts drafts through human approval; and publishes explicitly approved drafts through provider adapters.
+Tasks 1–9 are implemented on `main`. Task 10 (final Windows installer/release work) is intentionally the next stage.
 
-Phase 4 currently supports LinkedIn text publishing through the LinkedIn Posts API. Credentials remain environment-only and publishing attempts are audited in SQLite.
+### Task 1 — Multi-source Research
 
-## Phase 5 — Scheduling, retries and publishing operations
+- Web Search is a first-class research source.
+- GitHub Issues, Reddit, Stack Overflow, and RSS/News remain supported and query-aware.
+- Source selection, category/intent filters, time range, research depth, relevance/opportunity/trend scoring, and cross-source deduplication are supported.
+- Structured API errors are normalized for safe dashboard rendering.
 
-Phase 5 turns approved publishing into a controlled automation workflow without removing human approval.
+### Task 2 — Research → Content
 
-Only `approved` drafts can be scheduled. Publishing attempts are audited, retries are classified, and successful remote IDs are reused for idempotent retries.
+- Research results persist into the problems store used by AI analysis.
+- Targeted Create Content can analyze an item when needed and then generate a draft.
+- Content generation supports both current `ai_intelligence` and legacy `problem_analyses` data.
+- Duplicate non-rejected drafts are avoided.
 
-## Phase 6 — LinkedIn media publishing
+### Task 3 — Incremental AI Analyzer
 
-### Images
+- Already analyzed research is skipped on subsequent runs.
+- Only new/unanalyzed research is sent to the AI provider.
+- Existing intelligence and clusters are retained rather than rebuilt on every run.
+- New research receives structured category, intent, sentiment, severity, trend, opportunity, and content-gap analysis.
+- Near-duplicate research can reuse an existing analysis without another AI call.
 
-LinkedIn image publishing initializes an image upload, uploads the binary to the returned URL, waits for the asset to become `AVAILABLE`, and then creates the post with the image URN. The implementation supports JPEG, PNG, and GIF and bounds readiness polling with `LINKEDIN_MEDIA_POLL_ATTEMPTS` and `LINKEDIN_MEDIA_POLL_SECONDS`.
+### Task 4 — Multi-profile Architecture
 
-### Documents
+- Profiles are persisted in a master `automation_profiles` store.
+- Each profile can use an isolated SQLite database under `data/profiles/`.
+- Active profile context overlays profile database and AI provider/model settings.
+- The default/shared database remains available when no profile is selected.
+- The dashboard includes profile switching and profile management.
 
-Native PDF, DOC, DOCX, PPT, and PPTX publishing uses the same initialize/upload/readiness lifecycle. Documents are posted with the required media title.
+### Task 5 — Manual vs Automatic Mode
 
-### Video
+- Each profile supports Manual or Automatic mode.
+- Automatic profiles have a persisted daily run time and timezone-aware `next_run`.
+- Manual profiles are not worker-due but can be run explicitly with Run now.
+- Automation can be enabled/disabled without losing the saved profile pipeline configuration.
+- Profile UI exposes mode, enabled state, approval mode, schedule, timezone, and publishing controls.
 
-Native LinkedIn video publishing uses the Videos API multipart lifecycle: initialize the upload, upload the provider-specified byte ranges, collect ETags, finalize the upload, wait for readiness, then create the video post. Captions and thumbnails remain deferred.
+### Task 6 — Automatic End-to-End Pipeline
 
-### Multi-image
+Automatic profile execution follows:
 
-Phase 6F adds native organic MultiImage posts. LinkedIn supports **2–20 images** in one MultiImage post, and every image must be owned by the author or organization. The agent uploads each image through the Images API, waits for each asset to become available, then sends the resulting image URNs in `content.multiImage.images`.
+`Research → AI Analysis → Content → Approval → Scheduling → Publishing worker`
 
-MultiImage is exposed through:
+- Profile categories, resources, query, time range, and research limit drive the research stage.
+- Analysis is scoped to the research cycle.
+- Content generation is scoped to current research problems and prioritizes opportunity.
+- Human approval leaves drafts pending until an explicit decision.
+- Auto approval is applied only when the profile is configured for it.
+- Scheduling occurs only for approved drafts and only when auto-publish is enabled.
+- Actual publishing remains delegated to the existing worker.
+- Pipeline stage/run status is persisted for observability.
 
-```text
-POST /publish/{draft_id}/multi-image
-```
+### Task 7 — Approval System
 
-Example:
+- Human approval cannot be bypassed.
+- Rejection requires a reason.
+- Approval/rejection transitions and audit records are atomic.
+- Terminal drafts cannot be approved or rejected again through the decision path.
+- Direct publishing requires an approved draft.
+- Approval history is persisted in SQLite.
 
-```json
-{
-  "provider": "linkedin",
-  "image_paths": [
-    "/path/to/slide-1.jpg",
-    "/path/to/slide-2.jpg",
-    "/path/to/slide-3.jpg"
-  ]
-}
-```
+### Task 8 — Scheduling & Publishing
 
-CLI usage accepts `--media-path` multiple times:
+- Only approved drafts can be scheduled.
+- Schedule times require a future ISO-8601 timestamp and are normalized to UTC.
+- Active duplicate schedules for a draft/provider are blocked.
+- Scheduled/retrying jobs can be safely rescheduled while preserving provider/media settings.
+- Rescheduling clears stale retry errors.
+- Cancellation, retries, idempotency, media-aware scheduling, and the existing publisher worker remain supported.
+- LinkedIn text, image, document, video, and MultiImage publishing are supported.
 
-```bash
-python -m app.cli publish --draft-id 1 --provider linkedin --media-type multi_image \
-  --media-path /path/to/slide-1.jpg \
-  --media-path /path/to/slide-2.jpg \
-  --media-path /path/to/slide-3.jpg
-```
+### Task 9 — Full Regression & Cross-Environment Testing
 
-The existing atomic publish claim, approval requirement, audit trail, retry classification, and idempotency behavior are retained.
+- Python 3.11 and 3.12 regression suites run in CI.
+- Source compilation is checked before tests.
+- Docker build/smoke validation and Compose configuration validation are retained.
+- Windows CI validates Python tests, icon generation, installer build, and installer payload.
+- Critical runtime modules and workflow files have regression presence guards.
+
+## Dashboard
+
+The dashboard is a compact desktop-first workspace with:
+
+1. Overview
+2. Research
+3. Content
+4. Content Approval
+5. Calendar
+6. Analytics
+7. Integrations
+8. Settings
+
+AI providers and social integrations are separated. Provider configuration dynamically supports Gemini, OpenAI, and Hugging Face model discovery where provider credentials are available. Research state, filters, source coverage, ranking, workflow guidance, profile selection, approval, calendar, analytics, and publishing history are integrated into the dashboard.
+
+## AI providers
+
+The provider layer supports Gemini, OpenAI, and Hugging Face through lightweight HTTP REST clients. Provider/model configuration is stored through the system settings and profile configuration layers; credentials remain runtime configuration and are not committed to the repository.
+
+## LinkedIn publishing
+
+The publishing layer supports:
+
+- Text posts
+- Single-image posts
+- Documents: PDF, DOC, DOCX, PPT, PPTX
+- Native video upload lifecycle
+- Native MultiImage posts with 2–20 images
+
+Publishing retains approved-only guards, atomic publish claims, audit records, retry classification, and idempotency protection.
 
 ## Configuration
 
+Typical runtime settings include:
+
 ```text
+APP_ENV=development
+DATABASE_URL=sqlite:///./data/agent.db
 INTERNAL_API_KEY=
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+HUGGINGFACE_API_KEY=
 LINKEDIN_ACCESS_TOKEN=
 LINKEDIN_AUTHOR_URN=urn:li:person:<id>
 LINKEDIN_API_VERSION=202608
@@ -98,49 +160,25 @@ python -m app.cli publish --draft-id 1 --provider linkedin
 
 ## Production deployment
 
-Phase 6I adds a production container and a two-service Compose deployment: one API container and one continuous scheduling worker. The worker polls due schedules and shares the same persistent SQLite and media volumes as the API. Compose named volumes are used so database/media data survive container recreation. citeturn0search2
-
-Build and start:
+The supplied Docker Compose deployment runs an API service and a continuous worker service using persistent SQLite and media volumes.
 
 ```bash
 cp .env.example .env
-# Set APP_ENV=production, INTERNAL_API_KEY, GEMINI_API_KEY,
-# LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN in .env.
+# Configure production credentials/secrets in .env or your deployment secret store.
 docker compose build
 docker compose up -d
-```
-
-Check service state and logs:
-
-```bash
 docker compose ps
 docker compose logs -f api
 docker compose logs -f worker
 ```
 
-The API container exposes port `8000` and has a Docker healthcheck against `/health`. Docker healthchecks provide an explicit container health state independent of the application process state. citeturn0search3
+The API exposes port `8000` and provides `/health` and `/ready`. The worker uses `python -m app.cli worker --loop`, polls according to `WORKER_POLL_SECONDS`, and handles graceful SIGTERM/SIGINT shutdown.
 
-The worker uses:
+Scheduled media must be accessible to both API and worker containers. The supplied Compose configuration shares `/app/media` between them.
 
-```bash
-python -m app.cli worker --loop
-```
+SQLite is intentionally kept for a single application/worker deployment. Horizontal scaling against the same SQLite database is not supported; a future PostgreSQL migration can remove that limitation.
 
-and defaults to polling every 60 seconds through `WORKER_POLL_SECONDS`. It handles SIGTERM/SIGINT for graceful shutdown and keeps polling after an isolated worker-cycle exception.
-
-### Persistent media
-
-Scheduled media paths must be accessible to both API and worker containers. Store shared media under the mounted `/app/media` volume when using the supplied Compose deployment. The API and worker both mount the same named media volume.
-
-### Secrets
-
-The repository does not contain real credentials. The Compose deployment reads runtime configuration from `.env`; Docker documents `env_file` as a supported way to provide environment variables to services. For higher-security production environments, use the platform's secret-management facility rather than committing secrets to source control. citeturn0search1
-
-### Deployment limitation
-
-This release intentionally keeps SQLite and a single worker. Do not horizontally scale the API/worker pair against the same SQLite database. A future PostgreSQL migration can remove this deployment constraint if multi-instance scaling becomes necessary.
-
-## API
+## API surface
 
 ```text
 GET  /health
@@ -150,50 +188,68 @@ POST /analysis/run?limit=25
 POST /content/generate?limit=10
 GET  /approval/queue?status=pending_approval&limit=25
 POST /approval/{draft_id}
+GET  /approval/{draft_id}/history
 POST /publish/{draft_id}?provider=linkedin
 POST /publish/{draft_id}/image
 POST /publish/{draft_id}/multi-image
 POST /publish/{draft_id}/document
 POST /publish/{draft_id}/video
 POST /schedule/{draft_id}
+POST /schedule/{schedule_id}/reschedule
 GET  /schedules?status=scheduled&limit=50
 DELETE /schedule/{schedule_id}
 POST /worker/run?limit=10
 GET  /publishing/history?provider=linkedin&limit=50
 GET  /publishing/stats
+GET  /profiles
+POST /profiles
+PUT  /profiles/{profile_id}
+DELETE /profiles/{profile_id}
+POST /profiles/{profile_id}/run
+POST /profiles/{profile_id}/enable
+POST /profiles/{profile_id}/disable
 ```
 
-## Lightweight API protection
-
-Set `INTERNAL_API_KEY` in production. When configured, mutation and operational endpoints require the value in the `X-API-Key` header. `/health` remains public.
+When `INTERNAL_API_KEY` is configured, protected mutation/operational endpoints require the `X-API-Key` header. `/health` remains public.
 
 ## Architecture
 
 ```text
-Sources -> Normalize -> Dedup -> SQLite -> Score -> AI Analysis -> Clusters
-                                                     |
-                                                     v
-                                               Content Draft
-                                                     |
-                                                     v
-                                                Approval Queue
-                                                     |
-                                                     v
-                                             Approved Draft
-                                                     |
-                                          +----------+----------+
-                                          |                     |
-                                      Immediate             Schedule
-                                          |                     |
-                                          +----------+----------+
-                                                     |
-                                                   Worker
-                                                     |
-                                                 Publisher
-                                                     |
-                                                  Social API
-                                                     |
-                                          Attempts / History
+Configured Profile
+       |
+       v
+Research Sources -> Normalize -> Dedup -> SQLite -> Score
+                                               |
+                                               v
+                                         Incremental AI Analysis
+                                               |
+                                               v
+                                         Content Drafts
+                                               |
+                                               v
+                                         Approval Queue
+                                               |
+                                  +------------+------------+
+                                  |                         |
+                             Human Approval           Auto Approval
+                                  |                         |
+                                  +------------+------------+
+                                               |
+                                      Approved Draft
+                                               |
+                                      +--------+--------+
+                                      |                 |
+                                  Immediate          Schedule
+                                      |                 |
+                                      +--------+--------+
+                                               |
+                                            Worker
+                                               |
+                                          Publisher
+                                               |
+                                         Social API
+                                               |
+                                      Attempts / History
 ```
 
-The system remains SQLite-friendly and avoids heavy infrastructure such as Redis, Elasticsearch, or Temporal.
+The project intentionally uses lightweight dependencies and avoids Redis, Elasticsearch, Temporal, and other heavy infrastructure.
