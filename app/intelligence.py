@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
-from .ai import GeminiClient, ProblemAnalysis
+from .ai import AIAnalysisClient, ProblemAnalysis, create_ai_client
 from .config import Settings
 from .database import connect
 from .schemas import Problem
@@ -46,68 +46,39 @@ def opportunity_score(problem: Problem, analysis: ProblemAnalysis, cluster_size:
     engagement = min(100, problem.score * 2 + problem.comments)
     recurrence = min(100, 35 + cluster_size * 12)
     raw = (
-        analysis.severity * 0.20
-        + analysis.frequency_signal * 0.15
-        + analysis.trend_signal * 0.15
-        + analysis.content_gap * 0.15
-        + engagement * 0.10
-        + analysis.confidence * 0.10
-        + recurrence * 0.15
+        analysis.severity * 0.20 + analysis.frequency_signal * 0.15 + analysis.trend_signal * 0.15
+        + analysis.content_gap * 0.15 + engagement * 0.10 + analysis.confidence * 0.10 + recurrence * 0.15
     )
     return max(0, min(100, round(raw)))
 
 
 def _ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.executescript(
-        """
+    connection.executescript("""
         CREATE TABLE IF NOT EXISTS ai_intelligence (
-            problem_id INTEGER PRIMARY KEY,
-            category TEXT NOT NULL,
-            intent TEXT NOT NULL,
-            sentiment TEXT NOT NULL,
-            severity INTEGER NOT NULL,
-            frequency_signal INTEGER NOT NULL,
-            trend_signal INTEGER NOT NULL,
-            content_gap INTEGER NOT NULL,
-            opportunity_score INTEGER NOT NULL,
-            trend_label TEXT NOT NULL,
-            pain_point TEXT NOT NULL,
-            audience TEXT NOT NULL,
-            root_cause TEXT NOT NULL,
-            solution_angle TEXT NOT NULL,
-            hooks TEXT NOT NULL DEFAULT '[]',
-            risks TEXT NOT NULL DEFAULT '[]',
-            related_topics TEXT NOT NULL DEFAULT '[]',
-            recommended_formats TEXT NOT NULL DEFAULT '[]',
-            evidence TEXT NOT NULL DEFAULT '[]',
-            confidence INTEGER NOT NULL,
-            duplicate_of INTEGER,
-            cluster_id INTEGER,
-            analyzed_at TEXT NOT NULL,
+            problem_id INTEGER PRIMARY KEY, category TEXT NOT NULL, intent TEXT NOT NULL,
+            sentiment TEXT NOT NULL, severity INTEGER NOT NULL, frequency_signal INTEGER NOT NULL,
+            trend_signal INTEGER NOT NULL, content_gap INTEGER NOT NULL, opportunity_score INTEGER NOT NULL,
+            trend_label TEXT NOT NULL, pain_point TEXT NOT NULL, audience TEXT NOT NULL,
+            root_cause TEXT NOT NULL, solution_angle TEXT NOT NULL, hooks TEXT NOT NULL DEFAULT '[]',
+            risks TEXT NOT NULL DEFAULT '[]', related_topics TEXT NOT NULL DEFAULT '[]',
+            recommended_formats TEXT NOT NULL DEFAULT '[]', evidence TEXT NOT NULL DEFAULT '[]',
+            confidence INTEGER NOT NULL, duplicate_of INTEGER, cluster_id INTEGER, analyzed_at TEXT NOT NULL,
             FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_ai_intelligence_opportunity ON ai_intelligence(opportunity_score DESC);
         CREATE INDEX IF NOT EXISTS idx_ai_intelligence_cluster ON ai_intelligence(cluster_id);
         CREATE TABLE IF NOT EXISTS ai_clusters (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            label TEXT NOT NULL,
-            summary TEXT NOT NULL DEFAULT '',
-            member_count INTEGER NOT NULL DEFAULT 0,
-            opportunity_score INTEGER NOT NULL DEFAULT 0,
-            trend_label TEXT NOT NULL DEFAULT 'stable',
-            content_angle TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '',
+            member_count INTEGER NOT NULL DEFAULT 0, opportunity_score INTEGER NOT NULL DEFAULT 0,
+            trend_label TEXT NOT NULL DEFAULT 'stable', content_angle TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
-        """
-    )
+    """)
     connection.commit()
 
 
 def _problem_rows(connection: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
-    return connection.execute(
-        "SELECT * FROM problems ORDER BY score DESC, discovered_at DESC LIMIT ?", (limit,)
-    ).fetchall()
+    return connection.execute("SELECT * FROM problems ORDER BY score DESC, discovered_at DESC LIMIT ?", (limit,)).fetchall()
 
 
 def _problem(row: sqlite3.Row) -> Problem:
@@ -121,8 +92,7 @@ def _problem(row: sqlite3.Row) -> Problem:
 
 def _save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: ProblemAnalysis, score: int, duplicate_of: int | None, cluster_id: int | None) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    connection.execute(
-        """INSERT INTO ai_intelligence
+    connection.execute("""INSERT INTO ai_intelligence
         (problem_id, category, intent, sentiment, severity, frequency_signal, trend_signal, content_gap,
          opportunity_score, trend_label, pain_point, audience, root_cause, solution_angle, hooks, risks,
          related_topics, recommended_formats, evidence, confidence, duplicate_of, cluster_id, analyzed_at)
@@ -144,39 +114,25 @@ def _save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: Pr
     )
 
 
-def run_intelligence(
-    settings: Settings,
-    limit: int = 100,
-    client_factory: Callable[[Settings], GeminiClient] | None = None,
-) -> IntelligenceResult:
-    """Run the complete AI intelligence stage over collected research.
-
-    Pipeline: clean/normalize -> duplicate detection -> AI analysis -> scoring ->
-    semantic clustering -> trend/opportunity aggregation -> persisted intelligence.
-    """
+def run_intelligence(settings: Settings, limit: int = 100, client_factory: Callable[[Settings], AIAnalysisClient] | None = None) -> IntelligenceResult:
+    """Run clean -> deduplicate -> AI analysis -> score -> cluster -> persist."""
     if not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500")
     result = IntelligenceResult()
-    factory = client_factory or (lambda cfg: GeminiClient(cfg.gemini_api_key, model=cfg.gemini_model, timeout=cfg.gemini_timeout_seconds))
-    client = factory(settings)
+    client = (client_factory or create_ai_client)(settings)
     connection = connect(settings.database_url)
     try:
         _ensure_schema(connection)
         rows = _problem_rows(connection, limit)
         canonical: list[tuple[int, Problem]] = []
         duplicate_map: dict[int, int] = {}
+        problems_by_id = {int(row["id"]): _problem(row) for row in rows}
 
-        # Clean + semantic deduplication. Exact source fingerprints are already protected by DB;
-        # this pass catches near-identical titles across different sources.
         for row in rows:
             pid = int(row["id"])
-            problem = _problem(row)
+            problem = problems_by_id[pid]
             result.processed += 1
-            duplicate_of = None
-            for canonical_id, canonical_problem in canonical:
-                if semantic_similarity(problem.title, canonical_problem.title) >= 0.72:
-                    duplicate_of = canonical_id
-                    break
+            duplicate_of = next((cid for cid, cp in canonical if semantic_similarity(problem.title, cp.title) >= 0.72), None)
             if duplicate_of is None:
                 canonical.append((pid, problem))
             else:
@@ -184,7 +140,6 @@ def run_intelligence(
                 result.duplicates += 1
 
         analyses: dict[int, ProblemAnalysis] = {}
-        problems_by_id = {int(row["id"]): _problem(row) for row in rows}
         for pid, problem in canonical:
             try:
                 analyses[pid] = client.analyze(problem)
@@ -192,7 +147,6 @@ def run_intelligence(
             except Exception:
                 result.failed += 1
 
-        # Cluster by AI topics plus title/body similarity. Representatives are deterministic.
         groups: list[dict] = []
         for pid, analysis in analyses.items():
             problem = problems_by_id[pid]
@@ -217,12 +171,12 @@ def run_intelligence(
             analyses_in_group = group["analyses"]
             label = analyses_in_group[0].pain_point[:160] or problems_by_id[members[0]].title[:160]
             avg_score = round(sum(opportunity_score(problems_by_id[pid], analyses[pid], len(members)) for pid in members) / len(members))
-            trends = Counter(a.trend_label for a in analyses_in_group)
-            trend = trends.most_common(1)[0][0]
+            trend = Counter(a.trend_label for a in analyses_in_group).most_common(1)[0][0]
+            intent = Counter(a.intent for a in analyses_in_group).most_common(1)[0][0]
             angle = analyses_in_group[0].solution_angle
             cursor = connection.execute(
                 "INSERT INTO ai_clusters (label, summary, member_count, opportunity_score, trend_label, content_angle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (label, f"{len(members)} related research items; dominant intent: {Counter(a.intent for a in analyses_in_group).most_common(1)[0][0]}", len(members), avg_score, trend, angle, now, now),
+                (label, f"{len(members)} related research items; dominant intent: {intent}", len(members), avg_score, trend, angle, now, now),
             )
             cluster_id = int(cursor.lastrowid)
             result.clusters += 1
@@ -233,8 +187,8 @@ def run_intelligence(
                 cluster_for[pid] = cluster_id
 
         for pid, analysis in analyses.items():
-            score = opportunity_score(problems_by_id[pid], analysis, len([m for m in cluster_for if cluster_for[m] == cluster_for[pid]]))
-            _save_analysis(connection, pid, analysis, score, None, cluster_for.get(pid))
+            cluster_size = sum(1 for member in cluster_for if cluster_for[member] == cluster_for[pid])
+            _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, cluster_size), None, cluster_for.get(pid))
 
         for pid, canonical_id in duplicate_map.items():
             if canonical_id in analyses:
@@ -250,11 +204,9 @@ def run_intelligence(
 def list_intelligence(settings: Settings, limit: int = 100) -> list[dict]:
     connection = connect(settings.database_url)
     try:
-        rows = connection.execute(
-            """SELECT i.*, p.source, p.title, p.url, p.comments, p.score
-               FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
-               ORDER BY i.opportunity_score DESC, p.discovered_at DESC LIMIT ?""", (limit,)
-        ).fetchall()
+        rows = connection.execute("""SELECT i.*, p.source, p.title, p.url, p.comments, p.score
+            FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
+            ORDER BY i.opportunity_score DESC, p.discovered_at DESC LIMIT ?""", (limit,)).fetchall()
         return [dict(row) for row in rows]
     finally:
         connection.close()
