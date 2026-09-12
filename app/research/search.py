@@ -12,8 +12,9 @@ from .github import DEFAULT_QUERY, fetch_github_issues
 from .reddit import fetch_reddit
 from .rss import fetch_rss
 from .stackoverflow import fetch_stackoverflow
+from ..websearch import fetch_web
 
-SUPPORTED_SOURCES = ("github", "reddit", "stackoverflow", "rss")
+SUPPORTED_SOURCES = ("github", "reddit", "stackoverflow", "rss", "web")
 CATEGORIES = ("business", "technology", "ai", "marketing", "seo", "ecommerce", "wordpress", "development", "design", "security", "productivity", "finance", "education", "news", "other")
 INTENTS = ("problem", "question", "trend", "complaint", "feature_request", "tutorial", "review", "opinion", "bug", "opportunity")
 TIME_RANGES = {"24h": 1, "7d": 7, "30d": 30, "90d": 90, "1y": 365}
@@ -118,6 +119,7 @@ def search_research(settings: Settings, *, query: str = "", sources: list[str] |
         "reddit": lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds, query=query),
         "stackoverflow": lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds, query=query),
         "rss": lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source, query=query),
+        "web": lambda: fetch_web(query=query, limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds),
     }
     items: list[SearchItem] = []; failed: list[str] = []; seen: set[str] = set(); query_terms = [term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())]
     source_counts: dict[str, int] = {source: 0 for source in selected}
@@ -128,7 +130,7 @@ def search_research(settings: Settings, *, query: str = "", sources: list[str] |
                 for problem in fetchers[source]():
                     if not _within_date(problem, days): continue
                     text = _text(problem)
-                    if query.strip() and not any(term in text for term in query_terms): continue
+                    if query.strip() and query_terms and not any(term in text for term in query_terms): continue
                     classified_category, classified_intent = _classify(text)
                     if category != "all" and classified_category != category: continue
                     if intent != "all" and classified_intent != intent: continue
@@ -144,4 +146,4 @@ def search_research(settings: Settings, *, query: str = "", sources: list[str] |
     return {"items": [asdict(item) for item in items[:limit]], "total": len(items), "failed_sources": failed, "sources": selected, "source_counts": source_counts, "clusters": _cluster(items), "filters": {"query": query, "category": category, "intent": intent, "time_range": time_range}}
 
 def search_options() -> dict[str, Any]:
-    return {"sources": [{"id": "github", "name": "GitHub Issues", "enabled": True}, {"id": "reddit", "name": "Reddit", "enabled": True}, {"id": "stackoverflow", "name": "Stack Overflow", "enabled": True}, {"id": "rss", "name": "RSS / News", "enabled": True}, {"id": "web", "name": "Web Search", "enabled": False, "note": "Web adapter reserved for the next integration phase."}], "categories": list(CATEGORIES), "intents": list(INTENTS), "time_ranges": list(TIME_RANGES), "modes": ["quick", "standard", "deep"]}
+    return {"sources": [{"id": "github", "name": "GitHub Issues", "enabled": True}, {"id": "reddit", "name": "Reddit", "enabled": True}, {"id": "stackoverflow", "name": "Stack Overflow", "enabled": True}, {"id": "rss", "name": "RSS / News", "enabled": True}, {"id": "web", "name": "Web Search", "enabled": True}], "categories": list(CATEGORIES), "intents": list(INTENTS), "time_ranges": list(TIME_RANGES), "modes": ["quick", "standard", "deep"]}
