@@ -20,6 +20,33 @@ STOPWORDS = {
 }
 
 
+def _normalize_token(token: str) -> str:
+    replacements = {
+        "broke": "break", "breaks": "break", "broken": "break",
+        "websites": "site", "website": "site", "sites": "site",
+        "queries": "query", "errors": "error", "updates": "update",
+    }
+    token = replacements.get(token, token)
+    if len(token) > 5 and token.endswith("ing"):
+        token = token[:-3]
+    elif len(token) > 4 and token.endswith("es"):
+        token = token[:-2]
+    elif len(token) > 4 and token.endswith("s"):
+        token = token[:-1]
+    return token
+
+
+def _tokens(text: str) -> set[str]:
+    return {_normalize_token(token) for token in re.findall(r"[a-z0-9]{3,}", text.lower()) if token not in STOPWORDS}
+
+
+def semantic_similarity(left: str, right: str) -> float:
+    a, b = _tokens(left), _tokens(right)
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 @dataclass(slots=True)
 class IntelligenceResult:
     processed: int = 0
@@ -29,17 +56,6 @@ class IntelligenceResult:
     assignments: int = 0
     opportunities: int = 0
     failed: int = 0
-
-
-def _tokens(text: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9]{3,}", text.lower()) if token not in STOPWORDS}
-
-
-def semantic_similarity(left: str, right: str) -> float:
-    a, b = _tokens(left), _tokens(right)
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
 
 
 def opportunity_score(problem: Problem, analysis: ProblemAnalysis, cluster_size: int = 1) -> int:
@@ -115,7 +131,6 @@ def _save_analysis(connection: sqlite3.Connection, problem_id: int, analysis: Pr
 
 
 def run_intelligence(settings: Settings, limit: int = 100, client_factory: Callable[[Settings], AIAnalysisClient] | None = None) -> IntelligenceResult:
-    """Run clean -> deduplicate -> AI analysis -> score -> cluster -> persist."""
     if not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500")
     result = IntelligenceResult()
@@ -127,74 +142,50 @@ def run_intelligence(settings: Settings, limit: int = 100, client_factory: Calla
         canonical: list[tuple[int, Problem]] = []
         duplicate_map: dict[int, int] = {}
         problems_by_id = {int(row["id"]): _problem(row) for row in rows}
-
         for row in rows:
-            pid = int(row["id"])
-            problem = problems_by_id[pid]
-            result.processed += 1
+            pid = int(row["id"]); problem = problems_by_id[pid]; result.processed += 1
             duplicate_of = next((cid for cid, cp in canonical if semantic_similarity(problem.title, cp.title) >= 0.72), None)
-            if duplicate_of is None:
-                canonical.append((pid, problem))
-            else:
-                duplicate_map[pid] = duplicate_of
-                result.duplicates += 1
+            if duplicate_of is None: canonical.append((pid, problem))
+            else: duplicate_map[pid] = duplicate_of; result.duplicates += 1
 
         analyses: dict[int, ProblemAnalysis] = {}
         for pid, problem in canonical:
             try:
-                analyses[pid] = client.analyze(problem)
-                result.analyzed += 1
+                analyses[pid] = client.analyze(problem); result.analyzed += 1
             except Exception:
                 result.failed += 1
 
         groups: list[dict] = []
         for pid, analysis in analyses.items():
-            problem = problems_by_id[pid]
-            signature = " ".join([problem.title, analysis.pain_point, *analysis.related_topics])
-            chosen = None
-            best = 0.0
+            problem = problems_by_id[pid]; signature = " ".join([problem.title, analysis.pain_point, *analysis.related_topics])
+            chosen = None; best = 0.0
             for group in groups:
                 sim = semantic_similarity(signature, group["signature"])
-                if sim >= 0.34 and sim > best:
-                    chosen, best = group, sim
+                if sim >= 0.34 and sim > best: chosen, best = group, sim
             if chosen is None:
-                chosen = {"signature": signature, "members": [], "analyses": []}
-                groups.append(chosen)
-            chosen["members"].append(pid)
-            chosen["analyses"].append(analysis)
+                chosen = {"signature": signature, "members": [], "analyses": []}; groups.append(chosen)
+            chosen["members"].append(pid); chosen["analyses"].append(analysis)
 
         connection.execute("DELETE FROM ai_clusters")
-        now = datetime.now(timezone.utc).isoformat()
-        cluster_for: dict[int, int] = {}
+        now = datetime.now(timezone.utc).isoformat(); cluster_for: dict[int, int] = {}
         for group in groups:
-            members = group["members"]
-            analyses_in_group = group["analyses"]
+            members = group["members"]; analyses_in_group = group["analyses"]
             label = analyses_in_group[0].pain_point[:160] or problems_by_id[members[0]].title[:160]
             avg_score = round(sum(opportunity_score(problems_by_id[pid], analyses[pid], len(members)) for pid in members) / len(members))
             trend = Counter(a.trend_label for a in analyses_in_group).most_common(1)[0][0]
             intent = Counter(a.intent for a in analyses_in_group).most_common(1)[0][0]
-            angle = analyses_in_group[0].solution_angle
-            cursor = connection.execute(
-                "INSERT INTO ai_clusters (label, summary, member_count, opportunity_score, trend_label, content_angle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (label, f"{len(members)} related research items; dominant intent: {intent}", len(members), avg_score, trend, angle, now, now),
-            )
-            cluster_id = int(cursor.lastrowid)
-            result.clusters += 1
-            result.assignments += len(members)
-            if avg_score >= 70:
-                result.opportunities += 1
-            for pid in members:
-                cluster_for[pid] = cluster_id
+            cursor = connection.execute("INSERT INTO ai_clusters (label, summary, member_count, opportunity_score, trend_label, content_angle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (label, f"{len(members)} related research items; dominant intent: {intent}", len(members), avg_score, trend, analyses_in_group[0].solution_angle, now, now))
+            cluster_id = int(cursor.lastrowid); result.clusters += 1; result.assignments += len(members)
+            if avg_score >= 70: result.opportunities += 1
+            for pid in members: cluster_for[pid] = cluster_id
 
         for pid, analysis in analyses.items():
             cluster_size = sum(1 for member in cluster_for if cluster_for[member] == cluster_for[pid])
             _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[pid], analysis, cluster_size), None, cluster_for.get(pid))
-
         for pid, canonical_id in duplicate_map.items():
             if canonical_id in analyses:
                 analysis = analyses[canonical_id]
                 _save_analysis(connection, pid, analysis, opportunity_score(problems_by_id[canonical_id], analysis), canonical_id, cluster_for.get(canonical_id))
-
         connection.commit()
     finally:
         connection.close()
@@ -204,12 +195,9 @@ def run_intelligence(settings: Settings, limit: int = 100, client_factory: Calla
 def list_intelligence(settings: Settings, limit: int = 100) -> list[dict]:
     connection = connect(settings.database_url)
     try:
-        rows = connection.execute("""SELECT i.*, p.source, p.title, p.url, p.comments, p.score
-            FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id
-            ORDER BY i.opportunity_score DESC, p.discovered_at DESC LIMIT ?""", (limit,)).fetchall()
+        rows = connection.execute("SELECT i.*, p.source, p.title, p.url, p.comments, p.score FROM ai_intelligence i JOIN problems p ON p.id=i.problem_id ORDER BY i.opportunity_score DESC, p.discovered_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(row) for row in rows]
-    finally:
-        connection.close()
+    finally: connection.close()
 
 
 def list_clusters(settings: Settings, limit: int = 50) -> list[dict]:
@@ -217,5 +205,4 @@ def list_clusters(settings: Settings, limit: int = 50) -> list[dict]:
     try:
         rows = connection.execute("SELECT * FROM ai_clusters ORDER BY opportunity_score DESC, member_count DESC LIMIT ?", (limit,)).fetchall()
         return [dict(row) for row in rows]
-    finally:
-        connection.close()
+    finally: connection.close()
