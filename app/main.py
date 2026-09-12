@@ -44,7 +44,7 @@ app.add_middleware(
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     method = request.method.upper()
-    if method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("authenticated") is True:
+    if method in {"POST", "PUT", "PATCH", "DELETE"}:
         expected = get_settings().internal_api_key
         if not (expected and request.headers.get("x-api-key") == expected):
             origin = request.headers.get("origin")
