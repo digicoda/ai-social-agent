@@ -50,7 +50,7 @@ def test_complete_pipeline_persists_analysis_clusters_and_duplicates(tmp_path):
     connection = connect(settings.database_url)
     now = datetime.now(timezone.utc)
     save_problem(connection, Problem(source="reddit", external_id="1", title="WordPress update broke site", url="https://example.com/1", body="Users report the site breaks after an update.", score=25, comments=12, discovered_at=now))
-    save_problem(connection, Problem(source="github", external_id="2", title="WordPress update broke site", url="https://example.com/2", body="Issue describes a broken site after update.", score=20, comments=8, discovered_at=now))
+    save_problem(connection, Problem(source="github", external_id="2", title="WordPress update breaks website", url="https://example.com/2", body="Issue describes a broken site after update.", score=20, comments=8, discovered_at=now))
     save_problem(connection, Problem(source="stackoverflow", external_id="3", title="How to optimize a database query", url="https://example.com/3", body="A slow query needs troubleshooting.", score=8, comments=2, discovered_at=now))
     connection.close()
 
