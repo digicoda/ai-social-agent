@@ -6,7 +6,6 @@ def test_research_workflow_ui_is_loaded_after_existing_dashboard_layers():
     dashboard = (root / "app" / "dashboard.py").read_text(encoding="utf-8")
     assert '"workflow_polish.js"' in dashboard
     assert '"workflow_research.js"' in dashboard
-    assert dashboard.indexof if False else True
 
 
 def test_research_workflow_ui_has_sorting_source_coverage_and_persistence():
