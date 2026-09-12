@@ -6,18 +6,14 @@ from .publish_lock import claim_draft_for_publish, mark_draft_published_from_cla
 from .publishing import PublishingError, get_publisher
 
 
-def publish_draft(
-    settings: Settings,
-    draft_id: int,
-    provider_name: str,
-    media_paths: list[str] | None = None,
-    media_type: str = "none",
-) -> dict:
+def publish_draft(settings: Settings, draft_id: int, provider_name: str, media_paths: list[str] | None = None, media_type: str = "none") -> dict:
     connection = connect(settings.database_url)
     try:
         row = connection.execute("SELECT id, title, body, hashtags, status FROM content_drafts WHERE id = ?", (draft_id,)).fetchone()
         if row is None:
             raise PublishingError("draft not found", retryable=False)
+        if row["status"] not in {"approved", "publishing"}:
+            raise PublishingError("only approved drafts can be published", retryable=False)
         previous = existing_published_attempt(connection, draft_id, provider_name)
         if previous is not None:
             if row["status"] in {"approved", "publishing"}:
