@@ -114,7 +114,8 @@ def dashboard_page(request: Request) -> HTMLResponse:
 })();
 </script>'''
 
-    html = html.replace("</body>", intelligence_script + provider_script + update_script + security_script + "</body>")
+    search_script = (DASHBOARD_DIR / "search_ui.js").read_text(encoding="utf-8")
+    html = html.replace("</body>", intelligence_script + provider_script + update_script + security_script + search_script + "</body>")
     if not account_exists:
         html = html.replace("</body>", '''<script>(function(){const form=document.getElementById('loginForm');if(!form)return;form.onsubmit=async function(e){e.preventDefault();const p=document.getElementById('password').value;if(p!==document.getElementById('confirmPassword').value)return setAuthMode(true,'Passwords do not match.');if(p.length<8)return setAuthMode(true,'Password must be at least 8 characters.');const b=document.getElementById('authSubmit');b.disabled=true;try{const r=await fetch('/dashboard/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:p})});if(r.ok){document.getElementById('password').value='';document.getElementById('confirmPassword').value='';setAuthMode(false,'Account created successfully. Please sign in.')}else{const d=await r.json().catch(()=>({}));setAuthMode(true,d.detail||'Account could not be created.')}}finally{b.disabled=false}}})();</script></body>''')
     else:
