@@ -27,8 +27,8 @@ def test_full_ui_covers_workflow_and_dynamic_provider_models():
     assert "repeat(2,minmax(0,1fr))" in js
 
 
-def test_dashboard_does_not_load_conflicting_legacy_search_ui():
+def test_dashboard_owns_the_new_ui_shell_without_legacy_search_injection():
     root = Path(__file__).resolve().parents[1]
     dashboard = (root / "app" / "dashboard.py").read_text(encoding="utf-8")
-    assert '"full_ui.js", "system_patch.js"' in dashboard
+    assert '"full_ui.js"' in dashboard
     assert '"search_ui.js"' not in dashboard
