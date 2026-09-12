@@ -50,6 +50,13 @@ def test_search_to_ai_to_content_pipeline(tmp_path, monkeypatch):
     class FakeAIClient:
         def analyze(self, problem):
             return ProblemAnalysis(
+                pain_point="Updates can unexpectedly break deployment automation.",
+                audience="Developers and website operators",
+                root_cause="A breaking change was introduced without validating the deployment workflow.",
+                solution_angle="Show a safe update-and-rollback checklist for deployment workflows.",
+                hooks=["What should you check before applying an update?"],
+                risks=["Skipping a rollback plan can increase downtime."],
+                confidence=91,
                 category="development",
                 intent="bug",
                 sentiment="negative",
@@ -57,16 +64,9 @@ def test_search_to_ai_to_content_pipeline(tmp_path, monkeypatch):
                 frequency_signal=70,
                 trend_signal=68,
                 content_gap=80,
-                pain_point="Updates can unexpectedly break deployment automation.",
-                audience="Developers and website operators",
-                root_cause="A breaking change was introduced without validating the deployment workflow.",
-                solution_angle="Show a safe update-and-rollback checklist for deployment workflows.",
-                hooks=["What should you check before applying an update?"],
-                risks=["Skipping a rollback plan can increase downtime."],
                 related_topics=["deployment", "rollback", "automation"],
                 recommended_formats=["carousel", "how_to"],
                 evidence=["https://example.com/issues/1"],
-                confidence=91,
                 trend_label="rising",
             )
 
