@@ -18,11 +18,13 @@ from .publish_service import publish_draft
 from .publishing import PublishingError
 from .readiness import check_readiness
 from .research.runner import run_research
+from .research.search_api import router as research_search_router
 from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
 
 app = FastAPI(title="AI Social Agent", version="1.2.2")
+app.include_router(research_search_router)
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret or "development-only-session-secret", session_cookie="ai_social_session", same_site="lax", https_only=get_settings().app_env.lower() == "production")
 
 class ApprovalRequest(BaseModel):
@@ -52,15 +54,11 @@ class LoginRequest(BaseModel):
 class SettingsRequest(BaseModel):
     values: dict[str, object] = Field(default_factory=dict)
 
-
 def _authorize(x_api_key: str | None, request: Request) -> None:
     expected = get_settings().internal_api_key
-    if expected and x_api_key == expected:
-        return
-    if request.session.get("authenticated") is True:
-        return
-    if expected:
-        raise HTTPException(status_code=401, detail="invalid API key or dashboard session")
+    if expected and x_api_key == expected: return
+    if request.session.get("authenticated") is True: return
+    if expected: raise HTTPException(status_code=401, detail="invalid API key or dashboard session")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request): return dashboard_page(request)
@@ -108,8 +106,7 @@ def analysis_run(request: Request, limit: int = 25, x_api_key: str | None = Head
 def intelligence_run(request: Request, limit: int = 100, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request)
     if not 1 <= limit <= 500: raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
-    try:
-        result = run_intelligence(get_settings(), limit=limit)
+    try: result = run_intelligence(get_settings(), limit=limit)
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"processed": result.processed, "analyzed": result.analyzed, "duplicates": result.duplicates, "clusters": result.clusters, "assignments": result.assignments, "opportunities": result.opportunities, "failed": result.failed}
 @app.get("/intelligence/results")
