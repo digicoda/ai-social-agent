@@ -3,6 +3,7 @@ from contextvars import ContextVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Settings are intentionally request-aware so profile selection never leaks across requests.
 _active_profile: ContextVar[dict | None] = ContextVar("active_profile", default=None)
 
 
