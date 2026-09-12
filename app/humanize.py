@@ -30,12 +30,20 @@ def _average_sentence_words(text: str) -> float:
 
 
 def _repeated_phrase_count(text: str) -> int:
+    """Count distinct repeated phrase families, avoiding nested n-gram double counts."""
     words = re.findall(r"\b[a-zA-Z][a-zA-Z’'-]+\b", text.lower())
-    phrases = [" ".join(words[i : i + 3]) for i in range(max(0, len(words) - 2))]
-    counts: dict[str, int] = {}
-    for phrase in phrases:
-        counts[phrase] = counts.get(phrase, 0) + 1
-    return sum(1 for count in counts.values() if count > 1)
+    if len(words) < 3:
+        return 0
+    repeated: list[tuple[str, int]] = []
+    for size in range(min(6, len(words)), 2, -1):
+        counts: dict[str, int] = {}
+        for i in range(len(words) - size + 1):
+            phrase = " ".join(words[i : i + size])
+            counts[phrase] = counts.get(phrase, 0) + 1
+        for phrase, count in counts.items():
+            if count > 1 and not any(phrase in longer.split(" ") and len(longer.split(" ")) > size for longer, _ in repeated):
+                repeated.append((phrase, count))
+    return len(repeated)
 
 
 def _quality_report(draft, improvements: list[str]) -> HumanQualityReport:
@@ -57,8 +65,6 @@ def humanize_content(client: httpx.Client, settings: Settings, draft) -> tuple[o
     This is a quality/editorial transformation, not a detector-evasion routine. It
     must preserve the factual meaning and intent of the generated draft.
     """
-    # Imported lazily because content.py calls this module while defining/loading
-    # ContentDraft; a module-level import would create a circular dependency.
     from .content import ContentDraft, ContentGenerationError
 
     prompt = f"""Act as a senior human editor for a professional social-media post.
@@ -109,13 +115,7 @@ Confidence: {draft.confidence}
         improvements = [str(item).strip() for item in data.get("improvements", []) if str(item).strip()]
         if not title or not body or not hashtags or not cta:
             raise ValueError("incomplete human-quality draft")
-        edited = ContentDraft(
-            title=title,
-            body=body,
-            hashtags=hashtags[:6],
-            call_to_action=cta,
-            confidence=max(0, min(100, int(data["confidence"]))),
-        )
+        edited = ContentDraft(title=title, body=body, hashtags=hashtags[:6], call_to_action=cta, confidence=max(0, min(100, int(data["confidence"]))))
         return edited, _quality_report(edited, improvements)
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ContentGenerationError("Gemini returned an invalid human-quality payload") from exc
