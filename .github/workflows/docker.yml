@@ -55,9 +55,14 @@ jobs:
             docker logs ai-social-agent-smoke || true
             exit 1
           fi
-          curl --fail --silent -c /tmp/ai-social-agent-cookies.txt -X POST http://127.0.0.1:18000/dashboard/login \
+          echo 'Health endpoint: OK'
+          login_body=$(curl --fail --silent --show-error -c /tmp/ai-social-agent-cookies.txt -X POST http://127.0.0.1:18000/dashboard/login \
             -H 'Content-Type: application/json' \
             -H 'Origin: http://127.0.0.1:18000' \
-            -d '{"username":"ci-admin","password":"ci-password"}' | grep -q 'authenticated'
-          curl --fail --silent -b /tmp/ai-social-agent-cookies.txt http://127.0.0.1:18000/dashboard | grep -q 'AI Social Agent'
+            -d '{"username":"ci-admin","password":"ci-password"}')
+          echo "Login response: $login_body"
+          printf '%s' "$login_body" | grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true'
+          dashboard_body=$(curl --fail --silent --show-error -b /tmp/ai-social-agent-cookies.txt http://127.0.0.1:18000/dashboard)
+          printf '%s' "$dashboard_body" | grep -q 'AI Social Agent'
+          echo 'Authenticated dashboard: OK'
           docker logs ai-social-agent-smoke
