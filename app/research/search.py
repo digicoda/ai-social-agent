@@ -113,8 +113,14 @@ def _cluster(items: list[SearchItem]) -> list[dict[str, Any]]:
 def search_research(settings: Settings, *, query: str = "", sources: list[str] | None = None, category: str = "all", intent: str = "all", time_range: str = "30d", limit: int = 50) -> dict[str, Any]:
     selected = [s for s in (sources or list(SUPPORTED_SOURCES)) if s in SUPPORTED_SOURCES]
     days = TIME_RANGES.get(time_range)
-    fetchers: dict[str, Callable[[], list[Problem]]] = {"github": lambda: fetch_github_issues(query=(f"{query} is:issue is:open" if query.strip() else DEFAULT_QUERY), limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds), "reddit": lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds), "stackoverflow": lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds), "rss": lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source)}
+    fetchers: dict[str, Callable[[], list[Problem]]] = {
+        "github": lambda: fetch_github_issues(query=(f"{query} is:issue is:open" if query.strip() else DEFAULT_QUERY), limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds),
+        "reddit": lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds, query=query),
+        "stackoverflow": lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds, query=query),
+        "rss": lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source, query=query),
+    }
     items: list[SearchItem] = []; failed: list[str] = []; seen: set[str] = set(); query_terms = [term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())]
+    source_counts: dict[str, int] = {source: 0 for source in selected}
     db = connect(settings.database_url)
     try:
         for source in selected:
@@ -131,10 +137,11 @@ def search_research(settings: Settings, *, query: str = "", sources: list[str] |
                     seen.add(dedup_key); save_problem(db, problem)
                     sentiment = _sentiment(text); severity = _severity(text, classified_intent); relevance, opportunity, trend = _score(problem, _relevance(problem, query), classified_intent, severity)
                     items.append(SearchItem(source, problem.external_id, problem.title, problem.url, problem.body, problem.tags, problem.score, problem.comments, problem.published_at.isoformat() if problem.published_at else None, classified_category, classified_intent, relevance, opportunity, trend, sentiment, severity))
+                    source_counts[source] += 1
             except Exception: failed.append(source)
     finally: db.close()
     items.sort(key=lambda x: (x.opportunity, x.relevance, x.trend, x.severity), reverse=True)
-    return {"items": [asdict(item) for item in items[:limit]], "total": len(items), "failed_sources": failed, "sources": selected, "clusters": _cluster(items), "filters": {"query": query, "category": category, "intent": intent, "time_range": time_range}}
+    return {"items": [asdict(item) for item in items[:limit]], "total": len(items), "failed_sources": failed, "sources": selected, "source_counts": source_counts, "clusters": _cluster(items), "filters": {"query": query, "category": category, "intent": intent, "time_range": time_range}}
 
 def search_options() -> dict[str, Any]:
     return {"sources": [{"id": "github", "name": "GitHub Issues", "enabled": True}, {"id": "reddit", "name": "Reddit", "enabled": True}, {"id": "stackoverflow", "name": "Stack Overflow", "enabled": True}, {"id": "rss", "name": "RSS / News", "enabled": True}, {"id": "web", "name": "Web Search", "enabled": False, "note": "Web adapter reserved for the next integration phase."}], "categories": list(CATEGORIES), "intents": list(INTENTS), "time_ranges": list(TIME_RANGES), "modes": ["quick", "standard", "deep"]}
