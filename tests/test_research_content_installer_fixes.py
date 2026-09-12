@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -10,11 +9,11 @@ def test_dashboard_loads_targeted_bugfix_after_existing_layers():
     assert text.index("workflow_research.js") < text.index("bugfix_ui.js")
 
 
-def test_web_search_is_not_selectable_until_real_adapter_exists():
+def test_web_search_is_selectable_with_real_adapter():
     text = (ROOT / "app" / "dashboard" / "bugfix_ui.js").read_text(encoding="utf-8")
-    assert "web.disabled=true" in text
-    assert "Web Search — unavailable" in text
-    assert "not implemented in this build" in text
+    assert "web.disabled=false" in text
+    assert "Web Search" in text
+    assert "Web Search is available" in text
 
 
 def test_research_to_content_handoff_and_generation_are_explicit():

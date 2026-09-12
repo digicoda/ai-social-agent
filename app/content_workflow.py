@@ -15,18 +15,11 @@ from .schemas import Problem
 
 def _problem_from_row(row) -> Problem:
     return Problem(
-        source=row["source"],
-        external_id=row["external_id"],
-        title=row["title"],
-        url=row["url"],
-        summary=row["summary"],
-        body=row["body"],
-        tags=json.loads(row["tags"]),
-        score=int(row["score"]),
+        source=row["source"], external_id=row["external_id"], title=row["title"], url=row["url"],
+        summary=row["summary"], body=row["body"], tags=json.loads(row["tags"]), score=int(row["score"]),
         comments=int(row["comments"]),
         published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None,
-        discovered_at=datetime.fromisoformat(row["discovered_at"]),
-        metadata=json.loads(row["metadata"]),
+        discovered_at=datetime.fromisoformat(row["discovered_at"]), metadata=json.loads(row["metadata"]),
     )
 
 
@@ -34,10 +27,8 @@ def _analyze_if_needed(settings: Settings, db, problem_id: int, problem_row) -> 
     analyzed = _content_analysis(db, problem_id)
     if analyzed is not None:
         return analyzed
-
-    problem = _problem_from_row(problem_row)
     try:
-        analysis = create_ai_client(settings).analyze(problem)
+        analysis = create_ai_client(settings).analyze(_problem_from_row(problem_row))
     except Exception as exc:
         raise ContentGenerationError(f"AI analysis failed before content generation: {exc}") from exc
     save_analysis(db, problem_id, analysis, "create")
@@ -75,9 +66,18 @@ def generate_from_intelligence(settings: Settings, limit: int = 10) -> dict[str,
         raise ContentGenerationError("GEMINI_API_KEY is not configured")
     db = connect(settings.database_url)
     try:
-        rows = db.execute("""SELECT p.id FROM problems p JOIN ai_intelligence a ON a.problem_id=p.id
-            LEFT JOIN content_drafts d ON d.problem_id=p.id AND d.status!='rejected'
-            WHERE d.id IS NULL ORDER BY a.opportunity_score DESC, a.confidence DESC, p.discovered_at DESC LIMIT ?""", (limit,)).fetchall()
+        rows = db.execute("""
+            SELECT p.id
+            FROM problems p
+            LEFT JOIN ai_intelligence ai ON ai.problem_id = p.id
+            LEFT JOIN problem_analyses pa ON pa.problem_id = p.id
+            LEFT JOIN content_drafts d ON d.problem_id = p.id AND d.status != 'rejected'
+            WHERE d.id IS NULL AND (ai.problem_id IS NOT NULL OR pa.problem_id IS NOT NULL)
+            ORDER BY COALESCE(ai.opportunity_score, 0) DESC,
+                     COALESCE(ai.confidence, pa.confidence, 0) DESC,
+                     p.discovered_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
         ids = [int(r["id"]) for r in rows]
     finally:
         db.close()
