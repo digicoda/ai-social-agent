@@ -56,12 +56,19 @@ jobs:
             exit 1
           fi
           echo 'Health endpoint: OK'
-          login_body=$(curl --fail --silent --show-error -c /tmp/ai-social-agent-cookies.txt -X POST http://127.0.0.1:18000/dashboard/login \
+          payload=$(printf '{"username":"%s","password":"%s"}' "$ADMIN_USERNAME" "$ADMIN_PASSWORD")
+          login_code=$(curl --silent --show-error -o /tmp/ai-social-agent-login.json -w '%{http_code}' -c /tmp/ai-social-agent-cookies.txt -X POST http://127.0.0.1:18000/dashboard/login \
             -H 'Content-Type: application/json' \
             -H 'Origin: http://127.0.0.1:18000' \
-            -d '{"username":"ci-admin","password":"ci-password"}')
-          echo "Login response: $login_body"
-          printf '%s' "$login_body" | grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true'
+            -d "$payload")
+          echo "Login HTTP status: $login_code"
+          echo 'Login response:'
+          cat /tmp/ai-social-agent-login.json
+          echo
+          echo 'Container logs after login attempt:'
+          docker logs ai-social-agent-smoke || true
+          test "$login_code" = "200"
+          grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true' /tmp/ai-social-agent-login.json
           dashboard_body=$(curl --fail --silent --show-error -b /tmp/ai-social-agent-cookies.txt http://127.0.0.1:18000/dashboard)
           printf '%s' "$dashboard_body" | grep -q 'AI Social Agent'
           echo 'Authenticated dashboard: OK'
