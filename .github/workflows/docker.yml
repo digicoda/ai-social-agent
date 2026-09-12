@@ -34,7 +34,6 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test container health and dashboard
         run: |
-          set -o pipefail
           docker run -d --rm --name ai-social-agent-smoke -p 18000:8000 \
             -e ADMIN_USERNAME="$ADMIN_USERNAME" \
             -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
@@ -70,6 +69,6 @@ jobs:
           test "$login_code" = "200"
           grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true' /tmp/ai-social-agent-login.json
           dashboard_body=$(curl --fail --silent --show-error -b /tmp/ai-social-agent-cookies.txt http://127.0.0.1:18000/dashboard)
-          printf '%s' "$dashboard_body" | grep -q 'AI Social Agent'
+          grep -q 'AI Social Agent' <<< "$dashboard_body"
           echo 'Authenticated dashboard: OK'
           docker logs ai-social-agent-smoke

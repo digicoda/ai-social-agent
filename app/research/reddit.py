@@ -3,16 +3,21 @@ import httpx
 from ..schemas import Problem
 
 
-def fetch_reddit(subreddits: list[str] | None = None, limit: int = 25, user_agent: str = "ai-social-agent/0.1", timeout: float = 15.0) -> list[Problem]:
+def fetch_reddit(
+    subreddits: list[str] | None = None,
+    limit: int = 25,
+    user_agent: str = "ai-social-agent/0.1",
+    timeout: float = 15.0,
+    query: str = "",
+) -> list[Problem]:
     subreddits = subreddits or ["webdev", "wordpress", "woocommerce", "php", "javascript"]
     problems: list[Problem] = []
     for subreddit in subreddits:
-        response = httpx.get(
-            f"https://www.reddit.com/r/{subreddit}/new.json",
-            params={"limit": min(limit, 100), "raw_json": 1},
-            headers={"User-Agent": user_agent},
-            timeout=timeout,
-        )
+        endpoint = f"https://www.reddit.com/r/{subreddit}/search.json" if query.strip() else f"https://www.reddit.com/r/{subreddit}/new.json"
+        params = {"limit": min(limit, 100), "raw_json": 1}
+        if query.strip():
+            params.update({"q": query.strip(), "restrict_sr": "1", "sort": "relevance", "t": "year"})
+        response = httpx.get(endpoint, params=params, headers={"User-Agent": user_agent}, timeout=timeout)
         response.raise_for_status()
         children = response.json().get("data", {}).get("children", [])
         for child in children:

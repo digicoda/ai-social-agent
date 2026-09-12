@@ -4,24 +4,28 @@ import httpx
 
 from ..schemas import Problem
 
-API = "https://api.stackexchange.com/2.3/questions"
+API = "https://api.stackexchange.com/2.3/search/advanced"
 TAGS = ["wordpress", "woocommerce", "php", "javascript", "elementor", "api"]
 
 
-def fetch_stackoverflow(tags: list[str] | None = None, limit: int = 25, timeout: float = 15.0) -> list[Problem]:
+def fetch_stackoverflow(
+    tags: list[str] | None = None,
+    limit: int = 25,
+    timeout: float = 15.0,
+    query: str = "",
+) -> list[Problem]:
     tags = tags or TAGS
-    response = httpx.get(
-        API,
-        params={
-            "site": "stackoverflow",
-            "tagged": ";".join(tags),
-            "sort": "activity",
-            "order": "desc",
-            "pagesize": min(limit, 100),
-            "filter": "default",
-        },
-        timeout=timeout,
-    )
+    params = {
+        "site": "stackoverflow",
+        "tagged": ";".join(tags),
+        "sort": "relevance" if query.strip() else "activity",
+        "order": "desc",
+        "pagesize": min(limit, 100),
+        "filter": "default",
+    }
+    if query.strip():
+        params["q"] = query.strip()
+    response = httpx.get(API, params=params, timeout=timeout)
     response.raise_for_status()
     problems: list[Problem] = []
     for item in response.json().get("items", [])[:limit]:
