@@ -18,7 +18,7 @@ def fetch_rss(feeds: list[str], limit: int = 25, query: str = "") -> list[Proble
             summary = entry.get("summary", "") or ""
             if terms:
                 haystack = f"{title} {summary}".lower()
-                if not all(term in haystack for term in terms):
+                if not any(term in haystack for term in terms):
                     continue
             published = _entry_datetime(entry)
             problems.append(
