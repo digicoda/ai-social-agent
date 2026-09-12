@@ -13,8 +13,7 @@ EDITABLE_SETTINGS = {
     "huggingface_api_key": ("HUGGINGFACE_API_KEY", "secret"), "huggingface_model": ("HUGGINGFACE_MODEL", "text"), "huggingface_base_url": ("HUGGINGFACE_BASE_URL", "text"),
     "rss_feeds": ("RSS_FEEDS", "text"), "research_timeout_seconds": ("RESEARCH_TIMEOUT_SECONDS", "number"), "research_limit_per_source": ("RESEARCH_LIMIT_PER_SOURCE", "integer"),
     "linkedin_access_token": ("LINKEDIN_ACCESS_TOKEN", "secret"), "linkedin_author_urn": ("LINKEDIN_AUTHOR_URN", "text"), "linkedin_api_version": ("LINKEDIN_API_VERSION", "text"),
-    "publishing_timeout_seconds": ("PUBLISHING_TIMEOUT_SECONDS", "number"), "retry_base_seconds": ("RETRY_BASE_SECONDS", "integer"), "retry_max_seconds": ("RETRY_MAX_SECONDS", "integer"),
-    "worker_batch_size": ("WORKER_BATCH_SIZE", "integer"), "worker_poll_seconds": ("WORKER_POLL_SECONDS", "number"),
+    "publishing_timeout_seconds": ("PUBLISHING_TIMEOUT_SECONDS", "number"), "retry_base_seconds": ("RETRY_BASE_SECONDS", "integer"), "retry_max_seconds": ("RETRY_MAX_SECONDS", "integer"), "worker_batch_size": ("WORKER_BATCH_SIZE", "integer"), "worker_poll_seconds": ("WORKER_POLL_SECONDS", "number"),
 }
 SECRET_KEYS = {key for key, (_, kind) in EDITABLE_SETTINGS.items() if kind == "secret"}
 
@@ -45,8 +44,7 @@ def _validate(key: str, value: str) -> str:
         number = float(value)
         if number <= 0: raise ValueError(f"{key} must be greater than 0")
         return str(number)
-    if key == "ai_provider" and value.lower() not in {"gemini", "openai", "huggingface", "hf"}:
-        raise ValueError("ai_provider must be gemini, openai, or huggingface")
+    if key == "ai_provider" and value.lower() not in {"gemini", "openai", "huggingface", "hf"}: raise ValueError("ai_provider must be gemini, openai, or huggingface")
     return value
 
 def read_settings() -> dict:
@@ -84,21 +82,27 @@ def provider_models(provider: str, api_key: str = "") -> dict[str, object]:
     timeout = s.gemini_timeout_seconds
     try:
         if provider == "gemini":
-            r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models", headers={"x-goog-api-key": key}, timeout=timeout)
-            r.raise_for_status(); models = _model_items(provider, r.json()); selected = s.gemini_model
+            r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models", headers={"x-goog-api-key": key}, timeout=timeout); r.raise_for_status(); models = _model_items(provider, r.json()); selected = s.gemini_model
         else:
             base = s.openai_base_url if provider == "openai" else s.huggingface_base_url
-            r = httpx.get(f"{base.rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout)
-            r.raise_for_status(); models = _model_items(provider, r.json()); selected = s.openai_model if provider == "openai" else s.huggingface_model
+            r = httpx.get(f"{base.rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout); r.raise_for_status(); models = _model_items(provider, r.json()); selected = s.openai_model if provider == "openai" else s.huggingface_model
         return {"provider": provider, "models": models[:200], "selected": selected}
-    except httpx.HTTPStatusError as exc:
-        raise ValueError(f"{provider} returned HTTP {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        raise ValueError(f"Could not reach {provider}: {exc}") from exc
+    except httpx.HTTPStatusError as exc: raise ValueError(f"{provider} returned HTTP {exc.response.status_code}") from exc
+    except httpx.RequestError as exc: raise ValueError(f"Could not reach {provider}: {exc}") from exc
 
 def test_provider(provider: str) -> dict[str, object]:
-    try:
-        provider_models(provider)
-        return {"ok": True, "message": f"{provider.title()} API connection is working."}
-    except ValueError as exc:
-        return {"ok": False, "message": str(exc)}
+    provider = provider.lower()
+    if provider in {"gemini", "openai", "huggingface", "hf"}:
+        try:
+            data = provider_models("huggingface" if provider == "hf" else provider)
+            return {"ok": True, "message": f"{data['provider'].title()} API connection is working.", "models": data["models"], "selected": data["selected"]}
+        except ValueError as exc: return {"ok": False, "message": str(exc), "models": []}
+    s = get_settings()
+    if provider == "linkedin":
+        if not s.linkedin_access_token or not s.linkedin_author_urn: return {"ok": False, "message": "LinkedIn access token and author URN are required."}
+        try:
+            r = httpx.get("https://api.linkedin.com/v2/userinfo", headers={"Authorization": f"Bearer {s.linkedin_access_token}"}, timeout=s.publishing_timeout_seconds)
+            if r.status_code >= 400: return {"ok": False, "message": f"LinkedIn returned HTTP {r.status_code}. Check the token and scopes."}
+            return {"ok": True, "message": "LinkedIn token is accepted."}
+        except httpx.RequestError as exc: return {"ok": False, "message": f"LinkedIn connection failed: {exc}"}
+    return {"ok": False, "message": "This provider is not implemented."}
