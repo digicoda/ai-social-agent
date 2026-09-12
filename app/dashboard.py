@@ -59,7 +59,8 @@ def dashboard_page(request: Request) -> HTMLResponse:
     full_ui = (DASHBOARD_DIR / "full_ui.js").read_text(encoding="utf-8")
     polish_ui = (DASHBOARD_DIR / "ui_polish.js").read_text(encoding="utf-8")
     workflow_ui = (DASHBOARD_DIR / "workflow_polish.js").read_text(encoding="utf-8")
-    html = html.replace("</body>", '<script>window.current=window.current||"overview";</script>' + full_ui + polish_ui + workflow_ui + "</body>", 1)
+    research_workflow_ui = (DASHBOARD_DIR / "workflow_research.js").read_text(encoding="utf-8")
+    html = html.replace("</body>", '<script>window.current=window.current||"overview";</script>' + full_ui + polish_ui + workflow_ui + research_workflow_ui + "</body>", 1)
     if not account_exists:
         html = html.replace("</body>", "<script>setAuthMode(true,'Create your first admin account.');</script></body>", 1)
     else:
