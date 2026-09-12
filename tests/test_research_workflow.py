@@ -20,8 +20,7 @@ def test_research_adapters_support_real_query_search():
     assert "search.json" in reddit and '"q": query.strip()' in reddit
     assert 'API = "https://api.stackexchange.com/2.3/search/advanced"' in stackoverflow
     assert 'params["q"] = query.strip()' in stackoverflow
-    assert "query: str = \"\"" in rss
-    assert "haystack" in rss
+    assert "query: str = \"\"" in rss and "haystack" in rss
     assert "html.duckduckgo.com/html" in web
 
 
@@ -37,8 +36,5 @@ def test_workflow_ui_has_sorting_persistence_and_sequenced_steps():
 
 def test_dashboard_loads_workflow_ui_bundle_after_existing_layers():
     dashboard = (_root() / "app" / "dashboard.py").read_text(encoding="utf-8")
-    assert "workflow_polish.js" in dashboard
-    assert "workflow_research.js" in dashboard
-    assert "bugfix_ui.js" in dashboard
-    assert "profile_ui.js" in dashboard
-    assert "final_workflow_fix.js" in dashboard
+    for script in ("full_ui.js", "ui_polish.js", "workflow_polish.js", "workflow_research.js", "bugfix_ui.js", "profile_ui.js", "profile_compat.js", "final_workflow_fix.js"):
+        assert f'"{script}"' in dashboard
