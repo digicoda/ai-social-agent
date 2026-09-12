@@ -8,7 +8,6 @@
 (function(){
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>\\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\':'&#92;','"':'&quot;',"'":'&#39;'}[m]));
-  const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
   function patchSettings(){
     const root=$('content');
@@ -21,10 +20,11 @@
   function patchCalendar(){
     const root=$('content');
     if(!root||$('title')?.textContent!=='Calendar')return;
-    const form=root.querySelector('.panel:nth-of-type(2) .grid.grid3');
+    const schedulePanel=[...root.querySelectorAll('.panel')].find(p=>p.querySelector('#scheduleDraft'));
+    const form=schedulePanel?.querySelector('.grid.grid3');
     if(form)form.className='calendar-form';
     const save=$('saveSchedule');
-    if(save){save.parentElement?.classList.add('calendar-toolbar');}
+    if(save&&schedulePanel){const row=document.createElement('div');row.className='calendar-toolbar';save.parentElement?.insertBefore(row,save);row.appendChild(save);const status=$('scheduleStatus');if(status)row.appendChild(status)}
     const panels=root.querySelectorAll('.panel');
     if(panels[panels.length-1])panels[panels.length-1].classList.add('calendar-jobs');
   }
@@ -34,59 +34,38 @@
     if(!root||$('title')?.textContent!=='Integrations'||$('integrationPolished'))return;
     const panels=[...root.querySelectorAll(':scope > .grid > .panel')];
     if(panels.length<2)return;
-    const publishing=panels[0];
-    const ai=panels[1];
+    const publishing=panels[0],ai=panels[1];
     const aiItems=[...ai.querySelectorAll('.list > .item')];
     const socialItems=[...publishing.querySelectorAll('.social-box')];
-    const socialWrap=document.createElement('div');
-    socialWrap.className='integration-section';
+    const socialWrap=document.createElement('div');socialWrap.className='integration-section';
     socialWrap.innerHTML='<div class="panel"><div class="section-head"><div><h3>Social & Publishing Accounts</h3><span>Manage publishing destinations independently from AI providers.</span></div></div><div class="integration-social-grid" id="integrationSocialGrid"></div></div>';
-    const socialGrid=socialWrap.querySelector('#integrationSocialGrid');
-    socialItems.forEach(box=>{box.classList.add('integration-social-card');socialGrid.appendChild(box)});
-    const aiWrap=document.createElement('div');
-    aiWrap.id='integrationPolished';
-    aiWrap.className='integration-section';
+    const socialGrid=socialWrap.querySelector('#integrationSocialGrid');socialItems.forEach(box=>{box.classList.add('integration-social-card');socialGrid.appendChild(box)});
+    const aiWrap=document.createElement('div');aiWrap.id='integrationPolished';aiWrap.className='integration-section';
     aiWrap.innerHTML='<div class="panel"><div class="section-head"><div><h3>AI Provider Connections</h3><span>Each provider shows its current connection state and a direct configuration action.</span></div></div><div class="integration-provider-grid" id="integrationProviderGrid"></div></div>';
     const aiGrid=aiWrap.querySelector('#integrationProviderGrid');
-    aiItems.forEach(item=>{
-      const name=item.querySelector('strong')?.textContent||'AI Provider';
-      const status=item.querySelector('.chip')?.outerHTML||'<span class="chip">Not configured</span>';
-      const card=document.createElement('div');
-      card.className='integration-provider-card';
-      card.innerHTML=`<div class="statusline"><div><strong>${esc(name)}</strong><div class="connection-meta"><span class="tiny muted">AI model connection</span>${status}</div></div></div><div class="toolbar"><button class="btn secondary" type="button">Configure provider</button></div>`;
-      card.querySelector('button').onclick=()=>window.go('settings');
-      aiGrid.appendChild(card);
-    });
-    const outer=root.querySelector(':scope > .grid');
-    if(outer){outer.replaceWith(aiWrap,socialWrap)}
+    aiItems.forEach(item=>{const name=item.querySelector('strong')?.textContent||'AI Provider';const status=item.querySelector('.chip')?.outerHTML||'<span class="chip">Not configured</span>';const card=document.createElement('div');card.className='integration-provider-card';card.innerHTML=`<div class="statusline"><div><strong>${esc(name)}</strong><div class="connection-meta"><span class="tiny muted">AI model connection</span>${status}</div></div></div><div class="toolbar"><button class="btn secondary" type="button">Configure provider</button></div>`;card.querySelector('button').onclick=()=>window.go('settings');aiGrid.appendChild(card)});
+    const outer=root.querySelector(':scope > .grid');if(outer)outer.replaceWith(aiWrap,socialWrap);
   }
 
   function addAnalyticsLine(){
     const root=$('content');
     if(!root||$('title')?.textContent!=='Analytics'||$('analyticsLineCard'))return;
-    const table=root.querySelector('table');
-    if(!table)return;
-    const rows=[...table.querySelectorAll('tbody tr')];
-    const counts={};
+    const table=root.querySelector('table');if(!table)return;
+    const rows=[...table.querySelectorAll('tbody tr')],counts={};
     rows.forEach(row=>{const cells=row.querySelectorAll('td');const date=(cells[4]?.textContent||'').trim();if(!date)return;const key=date.slice(0,10);counts[key]=(counts[key]||0)+1});
-    const keys=Object.keys(counts).sort();
-    const values=keys.map(k=>counts[k]);
-    const max=Math.max(1,...values);
+    const keys=Object.keys(counts).sort(),values=keys.map(k=>counts[k]),max=Math.max(1,...values);
     const width=760,height=210,left=42,right=16,top=18,bottom=34;
     const pts=values.map((v,i)=>{const x=keys.length===1?(width-left-right)/2+left:left+i*((width-left-right)/Math.max(1,keys.length-1));const y=top+(height-top-bottom)*(1-v/max);return [x,y]});
     const path=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')||`M ${left} ${height-bottom}`;
-    const labels=keys.length?keys: ['No data'];
+    const labels=keys.length?keys:['No data'];
     const grid=[0,.5,1].map(f=>{const y=top+(height-top-bottom)*f;return `<line class="analytics-line-grid" x1="${left}" y1="${y}" x2="${width-right}" y2="${y}"/>`}).join('');
     const points=pts.map(p=>`<circle class="analytics-line-point" cx="${p[0]}" cy="${p[1]}" r="4"/>`).join('');
     const xlabels=labels.map((k,i)=>{const x=pts[i]?.[0]||left;return `<text class="analytics-axis" x="${x}" y="${height-10}" text-anchor="middle">${esc(k.slice(5)||k)}</text>`}).join('');
     const card=document.createElement('div');card.id='analyticsLineCard';card.className='panel analytics-line-card';
-    card.innerHTML=`<div class="section-head"><div><h3>Publishing activity trend</h3><span>Attempts grouped by day from the publishing history.</span></div><span class="badge">${values.reduce((a,b)=>a+b,0)} attempts</span></div><svg class="analytics-line" viewBox="0 0 ${width} ${height}" role="img" aria-label="Publishing attempts by day">${grid}<path class="analytics-line-path" d="${path}"/>${points}${xlabels}</svg>`;
-    root.appendChild(card);
+    card.innerHTML=`<div class="section-head"><div><h3>Publishing activity trend</h3><span>Attempts grouped by day from the publishing history.</span></div><span class="badge">${values.reduce((a,b)=>a+b,0)} attempts</span></div><svg class="analytics-line" viewBox="0 0 ${width} ${height}" role="img" aria-label="Publishing attempts by day">${grid}<path class="analytics-line-path" d="${path}"/>${points}${xlabels}</svg>`;root.appendChild(card);
   }
 
-  function patch(){
-    patchSettings();patchCalendar();patchIntegrations();addAnalyticsLine();
-  }
+  function patch(){patchSettings();patchCalendar();patchIntegrations();addAnalyticsLine()}
   new MutationObserver(()=>setTimeout(patch,0)).observe(document.documentElement,{subtree:true,childList:true});
   [100,350,900].forEach(t=>setTimeout(patch,t));
 })();
