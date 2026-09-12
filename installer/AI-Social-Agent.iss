@@ -3,7 +3,7 @@
 ; files, and preserves persistent ProgramData data/config/logs/media.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.2.2"
+#define AppVersion "1.2.3"
 #define AppPublisher "DigiCoda"
 
 [Setup]

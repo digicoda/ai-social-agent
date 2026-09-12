@@ -2,7 +2,7 @@ name: Windows Desktop Installer
 
 on:
   push:
-    branches: [main, 'v1.2.2']
+    branches: [main, 'v1.2.3']
     paths:
       - 'app/**'
       - 'tests/**'
@@ -64,16 +64,24 @@ jobs:
           Write-Host "Installer: $((Get-Item installer/output/AI-Social-Agent-Setup.exe).Length) bytes"
           Write-Host "Icon: $((Get-Item installer/AI-Social-Agent.ico).Length) bytes"
 
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash installer/output/AI-Social-Agent-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  AI-Social-Agent-Setup.exe" | Set-Content installer/output/AI-Social-Agent-Setup.exe.sha256
+
       - name: Upload installer
         uses: actions/upload-artifact@v6
         with:
           name: AI-Social-Agent-Windows-Installer
-          path: installer/output/AI-Social-Agent-Setup.exe
+          path: |
+            installer/output/AI-Social-Agent-Setup.exe
+            installer/output/AI-Social-Agent-Setup.exe.sha256
           if-no-files-found: error
           retention-days: 7
 
-  publish-v1-2-2:
-    if: github.ref == 'refs/heads/v1.2.2' && github.event_name == 'push'
+  publish-v1-2-3:
+    if: github.ref == 'refs/heads/v1.2.3' && github.event_name == 'push'
     needs: build-installer
     runs-on: windows-latest
     timeout-minutes: 10
@@ -86,22 +94,16 @@ jobs:
           name: AI-Social-Agent-Windows-Installer
           path: release
 
-      - name: Create checksum
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash release/AI-Social-Agent-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  AI-Social-Agent-Setup.exe" | Set-Content release/AI-Social-Agent-Setup.exe.sha256
-
       - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v1.2.2 --repo "${{ github.repository }}" 2>$null
+          gh release view v1.2.3 --repo "${{ github.repository }}" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create v1.2.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
+            gh release create v1.2.3 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.3" --notes "Final Windows Desktop installer after Tasks 1–10. Includes the completed multi-source research, incremental AI analyzer, multi-profile automation, approval/scheduling/publishing pipeline, regression validation, branded installer icon, checksum, and release packaging."
           }
-          gh release upload v1.2.2 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
-          gh release edit v1.2.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.2" --notes "Windows Desktop v1.2.2. In-place upgrade, persistent ProgramData preservation, hardened process shutdown, and System → Check & Update flow."
+          gh release upload v1.2.3 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
+          gh release edit v1.2.3 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.3" --notes "Final Windows Desktop installer after Tasks 1–10. Includes the completed multi-source research, incremental AI analyzer, multi-profile automation, approval/scheduling/publishing pipeline, regression validation, branded installer icon, checksum, and release packaging."
 
 # Final installer verification trigger.
