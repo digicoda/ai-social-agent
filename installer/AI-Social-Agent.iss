@@ -23,11 +23,14 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 CloseApplications=yes
 RestartApplications=no
+SetupIconFile=AI-Social-Agent.ico
+UninstallDisplayIcon={app}\AI-Social-Agent.ico
 
 [Files]
 Source: "..\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\windows\*.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "AI-Social-Agent.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 Name: "{commonappdata}\AI Social Agent"
@@ -36,10 +39,14 @@ Name: "{commonappdata}\AI Social Agent\logs"
 Name: "{commonappdata}\AI Social Agent\media"
 Name: "{commonappdata}\AI Social Agent\pids"
 
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+
 [Icons]
-Name: "{group}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 14
-Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"
-Name: "{group}\Uninstall AI Social Agent"; Filename: "{uninstallexe}"
+Name: "{group}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"
+Name: "{autodesktop}\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"; Tasks: desktopicon
+Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\windows\start-agent.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\AI-Social-Agent.ico"
+Name: "{group}\Uninstall AI Social Agent"; Filename: "{uninstallexe}"; IconFilename: "{app}\AI-Social-Agent.ico"
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
