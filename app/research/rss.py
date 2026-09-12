@@ -5,27 +5,38 @@ import feedparser
 from ..schemas import Problem
 
 
-def fetch_rss(feeds: list[str], limit: int = 25) -> list[Problem]:
+def fetch_rss(feeds: list[str], limit: int = 25, query: str = "") -> list[Problem]:
     problems: list[Problem] = []
+    terms = [term for term in query.lower().split() if len(term) > 2]
     for feed_url in feeds:
         parsed = feedparser.parse(feed_url)
-        for entry in parsed.entries[:limit]:
+        for entry in parsed.entries:
             link = entry.get("link", "")
             if not link:
                 continue
+            title = entry.get("title", "Untitled article")
+            summary = entry.get("summary", "") or ""
+            if terms:
+                haystack = f"{title} {summary}".lower()
+                if not all(term in haystack for term in terms):
+                    continue
             published = _entry_datetime(entry)
             problems.append(
                 Problem(
                     source="rss",
                     external_id=entry.get("id") or link,
-                    title=entry.get("title", "Untitled article"),
+                    title=title,
                     url=link,
-                    summary=entry.get("summary", "") or "",
-                    body=entry.get("summary", "") or "",
+                    summary=summary,
+                    body=summary,
                     published_at=published,
                     metadata={"feed": feed_url},
                 )
             )
+            if len(problems) >= limit:
+                break
+        if len(problems) >= limit:
+            break
     return problems[:limit]
 
 
