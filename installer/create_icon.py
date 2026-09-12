@@ -78,3 +78,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Task 10 release packaging marker: keep the branded icon generation in the release trigger path.

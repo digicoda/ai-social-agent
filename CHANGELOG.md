@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.3 - 2026-09-12
+
+### Final Windows release
+
+- Completed Tasks 1–10 release packaging.
+- Finalized the Windows desktop installer metadata as v1.2.3.
+- Retained the branded AI Social Agent icon for installer, Start Menu, desktop, startup, and uninstall shortcuts.
+- Added CI SHA-256 checksum generation alongside the installer artifact.
+- Added automated v1.2.3 GitHub release publishing from the v1.2.3 release branch.
+- Preserved in-place upgrade behavior and persistent ProgramData application data.
+
 ## Unreleased — Tasks 1–9
 
 ### Research and AI
