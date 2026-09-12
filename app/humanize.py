@@ -27,11 +27,11 @@ def _average_sentence_words(text: str) -> float:
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
     if not sentences:
         return 0.0
-    return round(sum(len(re.findall(r"\\b[\\w’'-]+\\b", s)) for s in sentences) / len(sentences), 1)
+    return round(sum(len(re.findall(r"\b[\w’'-]+\b", s)) for s in sentences) / len(sentences), 1)
 
 
 def _repeated_phrase_count(text: str) -> int:
-    words = re.findall(r"\\b[a-zA-Z][a-zA-Z’'-]+\\b", text.lower())
+    words = re.findall(r"\b[a-zA-Z][a-zA-Z’'-]+\b", text.lower())
     phrases = [" ".join(words[i : i + 3]) for i in range(max(0, len(words) - 2))]
     counts: dict[str, int] = {}
     for phrase in phrases:
