@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased — Tasks 1–9
+
+### Research and AI
+
+- Added Web Search as a first-class research source alongside GitHub Issues, Reddit, Stack Overflow, and RSS/News.
+- Made multi-source research query-aware with source coverage, ranking, filters, deterministic IDs, and structured error handling.
+- Connected research persistence to AI intelligence and content generation.
+- Added targeted research-result content generation with legacy `problem_analyses` compatibility.
+- Optimized AI analysis to skip already analyzed research and process only new/unanalyzed items while preserving existing intelligence and clusters.
+
+### Dashboard and configuration
+
+- Added the eight-page compact desktop dashboard: Overview, Research, Content, Content Approval, Calendar, Analytics, Integrations, and Settings.
+- Separated AI provider configuration from social integrations.
+- Added dynamic provider model discovery for Gemini, OpenAI, and Hugging Face where supported by configured credentials.
+- Added persistent profile switching and profile-specific configuration UI.
+
+### Profiles and automation
+
+- Added persistent multi-profile architecture with isolated per-profile SQLite databases.
+- Added Manual vs Automatic profile modes with daily time/timezone scheduling.
+- Added automation enable/disable controls and explicit Run now support.
+- Added the automatic Research → AI Analysis → Content → Approval → Scheduling pipeline with persisted run/stage status.
+- Preserved human approval and auto-approval as explicit profile modes.
+
+### Approval, scheduling, and publishing
+
+- Added atomic approval/rejection transitions with audit history and required rejection reasons.
+- Enforced approved-only direct publishing and scheduling.
+- Added safe rescheduling for scheduled/retrying jobs with future UTC normalization.
+- Preserved duplicate-schedule protection, cancellation, retries, idempotency, media-aware scheduling, and worker publishing.
+- Retained LinkedIn text, image, document, video, and MultiImage publishing.
+
+### Validation
+
+- Added Task 9 full regression validation across Python 3.11 and 3.12.
+- Added source compilation checks, Docker/Compose validation, and Windows installer/icon/payload checks to CI.
+- Added regression coverage for Tasks 1–9 and critical runtime/workflow presence.
+
+### Security and operations
+
+- Retained production session/authentication hardening, CSRF/origin protection, security headers, safe source URLs, and runtime-only credentials.
+- Retained Docker API + worker deployment with persistent database/media storage and graceful worker shutdown.
+
 ## 1.0.0 - 2026-09-10
 
 ### Added
