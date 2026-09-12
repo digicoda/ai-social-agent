@@ -12,17 +12,21 @@ def test_research_passes_query_to_all_configured_sources():
     assert "fetch_stackoverflow(limit=settings.research_limit_per_source" in search
     assert "fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source, query=query)" in search
     assert '"source_counts": source_counts' in search
+    assert '"web": lambda: fetch_web(' in search
+    assert '"web"' in search
 
 
 def test_research_adapters_support_real_query_search():
     reddit = (_root() / "app" / "research" / "reddit.py").read_text(encoding="utf-8")
     stackoverflow = (_root() / "app" / "research" / "stackoverflow.py").read_text(encoding="utf-8")
     rss = (_root() / "app" / "research" / "rss.py").read_text(encoding="utf-8")
+    web = (_root() / "app" / "websearch.py").read_text(encoding="utf-8")
     assert "search.json" in reddit and '"q": query.strip()' in reddit
     assert 'API = "https://api.stackexchange.com/2.3/search/advanced"' in stackoverflow
     assert 'params["q"] = query.strip()' in stackoverflow
     assert "query: str = \"\"" in rss
     assert "haystack" in rss
+    assert "html.duckduckgo.com/html" in web
 
 
 def test_workflow_ui_has_sorting_persistence_and_sequenced_steps():
@@ -38,4 +42,6 @@ def test_workflow_ui_has_sorting_persistence_and_sequenced_steps():
 def test_dashboard_loads_workflow_ui_after_existing_dashboard_layers():
     dashboard = (_root() / "app" / "dashboard.py").read_text(encoding="utf-8")
     assert 'workflow_ui = (DASHBOARD_DIR / "workflow_polish.js").read_text' in dashboard
-    assert "full_ui + polish_ui + workflow_ui" in dashboard
+    for script in ("full_ui.js", "ui_polish.js", "workflow_research.js", "bugfix_ui.js", "workflow_fix.js", "profiles_ui.js"):
+        assert f'"{script}"' in dashboard
+    assert "payload=workflow_ui+" in dashboard
