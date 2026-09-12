@@ -7,11 +7,17 @@ import httpx
 
 from .config import get_settings
 
-
 EDITABLE_SETTINGS = {
+    "ai_provider": ("AI_PROVIDER", "text"),
     "gemini_api_key": ("GEMINI_API_KEY", "secret"),
     "gemini_model": ("GEMINI_MODEL", "text"),
     "gemini_timeout_seconds": ("GEMINI_TIMEOUT_SECONDS", "number"),
+    "openai_api_key": ("OPENAI_API_KEY", "secret"),
+    "openai_model": ("OPENAI_MODEL", "text"),
+    "openai_base_url": ("OPENAI_BASE_URL", "text"),
+    "huggingface_api_key": ("HUGGINGFACE_API_KEY", "secret"),
+    "huggingface_model": ("HUGGINGFACE_MODEL", "text"),
+    "huggingface_base_url": ("HUGGINGFACE_BASE_URL", "text"),
     "rss_feeds": ("RSS_FEEDS", "text"),
     "research_timeout_seconds": ("RESEARCH_TIMEOUT_SECONDS", "number"),
     "research_limit_per_source": ("RESEARCH_LIMIT_PER_SOURCE", "integer"),
@@ -68,6 +74,8 @@ def _validate(key: str, value: str) -> str:
         if number <= 0:
             raise ValueError(f"{key} must be greater than 0")
         return str(number)
+    if key == "ai_provider" and value.lower() not in {"gemini", "openai", "huggingface", "hf"}:
+        raise ValueError("ai_provider must be gemini, openai, or huggingface")
     return value
 
 
@@ -104,6 +112,8 @@ def provider_status() -> list[dict[str, object]]:
     settings = get_settings()
     return [
         {"id": "gemini", "name": "Google Gemini", "status": "configured" if settings.gemini_api_key else "not_configured", "supported": True},
+        {"id": "openai", "name": "OpenAI", "status": "configured" if settings.openai_api_key else "not_configured", "supported": True},
+        {"id": "huggingface", "name": "Hugging Face", "status": "configured" if settings.huggingface_api_key else "not_configured", "supported": True},
         {"id": "linkedin", "name": "LinkedIn", "status": "configured" if settings.linkedin_access_token and settings.linkedin_author_urn else "not_configured", "supported": True},
         {"id": "facebook", "name": "Facebook Pages", "status": "available_next", "supported": False},
         {"id": "instagram", "name": "Instagram", "status": "available_next", "supported": False},
@@ -118,15 +128,27 @@ def test_provider(provider: str) -> dict[str, object]:
     if provider == "gemini":
         if not settings.gemini_api_key:
             return {"ok": False, "message": "Gemini API key is not configured."}
-        url = "https://generativelanguage.googleapis.com/v1beta/models"
         try:
-            response = httpx.get(url, headers={"x-goog-api-key": settings.gemini_api_key}, timeout=timeout)
+            response = httpx.get("https://generativelanguage.googleapis.com/v1beta/models", headers={"x-goog-api-key": settings.gemini_api_key}, timeout=timeout)
             response.raise_for_status()
             return {"ok": True, "message": "Gemini API connection is working."}
         except httpx.HTTPStatusError as exc:
             return {"ok": False, "message": f"Gemini API returned HTTP {exc.response.status_code}."}
         except httpx.RequestError as exc:
             return {"ok": False, "message": f"Gemini connection failed: {exc}"}
+    if provider in {"openai", "huggingface", "hf"}:
+        key = settings.openai_api_key if provider == "openai" else settings.huggingface_api_key
+        base = settings.openai_base_url if provider == "openai" else settings.huggingface_base_url
+        name = "OpenAI" if provider == "openai" else "Hugging Face"
+        if not key:
+            return {"ok": False, "message": f"{name} API key is not configured."}
+        try:
+            response = httpx.get(f"{base.rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout)
+            if response.status_code >= 400:
+                return {"ok": False, "message": f"{name} returned HTTP {response.status_code}."}
+            return {"ok": True, "message": f"{name} API connection is working."}
+        except httpx.RequestError as exc:
+            return {"ok": False, "message": f"{name} connection failed: {exc}"}
     if provider == "linkedin":
         if not settings.linkedin_access_token or not settings.linkedin_author_urn:
             return {"ok": False, "message": "LinkedIn access token and author URN are required."}
@@ -137,4 +159,4 @@ def test_provider(provider: str) -> dict[str, object]:
             return {"ok": True, "message": "LinkedIn token is accepted."}
         except httpx.RequestError as exc:
             return {"ok": False, "message": f"LinkedIn connection failed: {exc}"}
-    return {"ok": False, "message": "This publishing adapter is not implemented yet."}
+    return {"ok": False, "message": "This provider is not implemented."}

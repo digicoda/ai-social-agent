@@ -13,6 +13,7 @@ from .approval import queue, set_decision
 from .config import get_settings
 from .content import ContentGenerationError, generate_content
 from .dashboard import dashboard_login, dashboard_logout, dashboard_page
+from .intelligence import list_clusters, list_intelligence, run_intelligence
 from .publish_service import publish_draft
 from .publishing import PublishingError
 from .readiness import check_readiness
@@ -22,7 +23,6 @@ from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
 
 app = FastAPI(title="AI Social Agent", version="1.2.2")
-
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret or "development-only-session-secret", session_cookie="ai_social_session", same_site="lax", https_only=get_settings().app_env.lower() == "production")
 
 class ApprovalRequest(BaseModel):
@@ -90,11 +90,9 @@ def system_test_provider(provider: str, request: Request, x_api_key: str | None 
 @app.post("/system/update")
 def system_update(request: Request, x_api_key: str | None = Header(default=None)) -> dict[str, str]:
     _authorize(x_api_key, request)
-    if os.name != "nt":
-        raise HTTPException(status_code=400, detail="Automatic Windows updates are available only in the Windows Desktop edition.")
+    if os.name != "nt": raise HTTPException(status_code=400, detail="Automatic Windows updates are available only in the Windows Desktop edition.")
     script = Path(__file__).resolve().parents[1] / "windows" / "update-agent.ps1"
-    if not script.exists():
-        raise HTTPException(status_code=500, detail="Windows updater is missing from this installation.")
+    if not script.exists(): raise HTTPException(status_code=500, detail="Windows updater is missing from this installation.")
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
     subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], cwd=str(script.parent.parent), creationflags=creationflags, close_fds=True)
     return {"status": "started", "message": "Update started. The service will restart automatically after installation."}
@@ -106,6 +104,19 @@ def analysis_run(request: Request, limit: int = 25, x_api_key: str | None = Head
     _authorize(x_api_key, request)
     if not 1 <= limit <= 100: raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
     result = run_analysis(get_settings(), limit=limit); return {"analyzed": result.analyzed, "auto_publish_candidates": result.auto_publish_candidates, "approval_queue": result.approval_queue, "discarded": result.discarded, "failed": result.failed}
+@app.post("/intelligence/run")
+def intelligence_run(request: Request, limit: int = 100, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request)
+    if not 1 <= limit <= 500: raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    try:
+        result = run_intelligence(get_settings(), limit=limit)
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"processed": result.processed, "analyzed": result.analyzed, "duplicates": result.duplicates, "clusters": result.clusters, "assignments": result.assignments, "opportunities": result.opportunities, "failed": result.failed}
+@app.get("/intelligence/results")
+def intelligence_results(request: Request, limit: int = 100, x_api_key: str | None = Header(default=None)) -> dict:
+    _authorize(x_api_key, request)
+    if not 1 <= limit <= 500: raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    return {"items": list_intelligence(get_settings(), limit=limit), "clusters": list_clusters(get_settings(), limit=min(limit, 100))}
 @app.post("/content/generate")
 def content_generate(request: Request, limit: int = 10, x_api_key: str | None = Header(default=None)) -> dict:
     _authorize(x_api_key, request)
