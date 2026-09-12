@@ -1,0 +1,1 @@
+<script>window.$=window.$||function(id){return document.getElementById(id)};</script>
