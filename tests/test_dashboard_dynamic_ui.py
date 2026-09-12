@@ -8,7 +8,7 @@ DASHBOARD = ROOT / "app" / "dashboard"
 def test_dashboard_uses_modular_professional_ui():
     ui = (DASHBOARD / "full_ui.js").read_text(encoding="utf-8")
     assert "AI Providers" in ui
-    assert "Social & Publishing" in ui
+    assert "Publishing destinations" in ui
     assert "Load available models" in ui
     assert "/system/test/${id}" in ui
     assert "config-pane" in ui
