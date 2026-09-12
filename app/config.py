@@ -1,12 +1,21 @@
 import os
-from functools import lru_cache
+from contextvars import ContextVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_active_profile: ContextVar[dict | None] = ContextVar("active_profile", default=None)
+
+
+def set_active_profile(profile: dict | None):
+    return _active_profile.set(profile)
+
+
+def reset_active_profile(token):
+    _active_profile.reset(token)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=os.environ.get("AI_SOCIAL_AGENT_CONFIG", ".env"), extra="ignore")
-
     app_env: str = "development"
     database_url: str = "sqlite:///./data/ai_social_agent.db"
     internal_api_key: str = ""
@@ -43,6 +52,29 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.rss_feeds.split(",") if item.strip()]
 
 
-@lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    """Return current environment settings with the request's active profile overlay."""
+    base = Settings()
+    env_database_url = os.environ.get("DATABASE_URL")
+    if env_database_url:
+        base = base.model_copy(update={"database_url": env_database_url})
+    profile = _active_profile.get()
+    if not profile:
+        return base
+    cfg = profile.get("config") or {}
+    values = {
+        "ai_provider": cfg.get("ai_provider", base.ai_provider),
+        "gemini_model": base.gemini_model,
+        "openai_model": base.openai_model,
+        "huggingface_model": base.huggingface_model,
+        "database_url": profile.get("database_url") or base.database_url,
+    }
+    provider = str(cfg.get("ai_provider") or base.ai_provider).lower()
+    model = str(cfg.get("ai_model") or "")
+    if provider == "gemini" and model:
+        values["gemini_model"] = model
+    elif provider == "openai" and model:
+        values["openai_model"] = model
+    elif provider == "huggingface" and model:
+        values["huggingface_model"] = model
+    return base.model_copy(update=values)
