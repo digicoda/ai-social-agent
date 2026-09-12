@@ -64,6 +64,34 @@ Risks: {json.dumps(analysis.risks, ensure_ascii=False)}
         raise ContentGenerationError("Gemini returned an invalid content payload") from exc
 
 
+def _content_analysis(connection, problem_id: int) -> tuple[ProblemAnalysis, str] | None:
+    legacy = get_analysis(connection, problem_id)
+    if legacy is not None:
+        return legacy
+
+    row = connection.execute(
+        "SELECT category, intent, sentiment, severity, frequency_signal, trend_signal, content_gap, "
+        "opportunity_score, trend_label, pain_point, audience, root_cause, solution_angle, hooks, risks, "
+        "related_topics, recommended_formats, evidence, confidence FROM ai_intelligence WHERE problem_id = ?",
+        (problem_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return (
+        ProblemAnalysis(
+            pain_point=row["pain_point"], audience=row["audience"], root_cause=row["root_cause"],
+            solution_angle=row["solution_angle"], hooks=json.loads(row["hooks"]), risks=json.loads(row["risks"]),
+            confidence=int(row["confidence"]), category=row["category"], intent=row["intent"],
+            sentiment=row["sentiment"], severity=int(row["severity"]), frequency_signal=int(row["frequency_signal"]),
+            trend_signal=int(row["trend_signal"]), content_gap=int(row["content_gap"]),
+            opportunity_score=int(row["opportunity_score"]), trend_label=row["trend_label"],
+            related_topics=json.loads(row["related_topics"]), recommended_formats=json.loads(row["recommended_formats"]),
+            evidence=json.loads(row["evidence"]),
+        ),
+        "create",
+    )
+
+
 def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
     if not settings.gemini_api_key:
         raise ContentGenerationError("GEMINI_API_KEY is not configured")
@@ -80,7 +108,7 @@ def generate_content(settings: Settings, limit: int = 10) -> dict[str, int]:
                 if existing:
                     skipped += 1
                     continue
-                analyzed = get_analysis(connection, problem_id)
+                analyzed = _content_analysis(connection, problem_id)
                 if analyzed is None or analyzed[1] == "discard":
                     skipped += 1
                     continue
