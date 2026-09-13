@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -12,6 +13,8 @@ from .content import ContentGenerationError, _apply_human_quality, _content_anal
 from .database import connect, save_analysis, save_draft
 from .schemas import Problem
 
+_IMAGE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="content-image")
+
 
 def _problem_from_row(row) -> Problem:
     return Problem(source=row["source"], external_id=row["external_id"], title=row["title"], url=row["url"], summary=row["summary"], body=row["body"], tags=json.loads(row["tags"]), score=int(row["score"]), comments=int(row["comments"]), published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None, discovered_at=datetime.fromisoformat(row["discovered_at"]), metadata=json.loads(row["metadata"]))
@@ -20,8 +23,6 @@ def _problem_from_row(row) -> Problem:
 def _analyze_if_needed(settings, db, problem_id, problem):
     analyzed = _content_analysis(db, problem_id)
     if analyzed:
-        # _content_analysis supports both legacy problem_analyses and the new
-        # ai_intelligence format. Normalize both to (analysis, decision).
         if isinstance(analyzed, tuple):
             return analyzed
         return analyzed, "create"
@@ -31,6 +32,14 @@ def _analyze_if_needed(settings, db, problem_id, problem):
         raise ContentGenerationError(f"AI analysis failed before content generation: {exc}") from exc
     save_analysis(db, problem_id, analysis, "create")
     return analysis, "create"
+
+
+def _queue_image(settings: Settings, draft_id: int, title: str, body: str, analysis) -> None:
+    try:
+        generate_image_for_draft(settings, draft_id, title, body, analysis)
+    except Exception:
+        # Image generation is deliberately non-blocking. The draft itself is already saved.
+        pass
 
 
 def generate_for_problem(settings: Settings, problem_id: int) -> dict[str, Any]:
@@ -50,8 +59,11 @@ def generate_for_problem(settings: Settings, problem_id: int) -> dict[str, Any]:
         with httpx.Client(timeout=settings.gemini_timeout_seconds) as client:
             draft = _apply_human_quality(client, settings, _generate(client, settings, _problem_from_row(problem), analysis))
         draft_id = save_draft(db, problem_id, "generic", draft.title, draft.body, draft.hashtags, draft.call_to_action, draft.confidence)
-        image = generate_image_for_draft(settings, draft_id, draft.title, draft.body, analysis)
-        return {"generated": 1, "skipped": 0, "failed": 0, "draft_id": draft_id, "image": image}
+        image_queued = False
+        if settings.image_enabled:
+            _IMAGE_EXECUTOR.submit(_queue_image, settings, draft_id, draft.title, draft.body, analysis)
+            image_queued = True
+        return {"generated": 1, "skipped": 0, "failed": 0, "draft_id": draft_id, "image": None, "image_queued": image_queued}
     except httpx.HTTPError as exc:
         raise ContentGenerationError(f"content provider request failed: {exc}") from exc
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -69,7 +81,7 @@ def generate_from_intelligence(settings: Settings, limit: int = 10) -> dict[str,
         ids = [int(r["id"]) for r in rows]
     finally:
         db.close()
-    result = {"generated": 0, "skipped": 0, "failed": 0, "images": 0}
+    result = {"generated": 0, "skipped": 0, "failed": 0, "images": 0, "images_queued": 0}
     for problem_id in ids:
         try:
             item = generate_for_problem(settings, problem_id)
@@ -77,6 +89,8 @@ def generate_from_intelligence(settings: Settings, limit: int = 10) -> dict[str,
                 result[key] += int(item.get(key, 0))
             if item.get("image"):
                 result["images"] += 1
+            if item.get("image_queued"):
+                result["images_queued"] += 1
         except ContentGenerationError:
             result["failed"] += 1
     return result
