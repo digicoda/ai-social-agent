@@ -25,8 +25,10 @@ def _domain(value: str) -> str:
 def fetch_web(query: str, limit: int = 10, timeout: float = 15.0, website_url: str = "") -> list[Problem]:
     q = query.strip() or "technology problems"
     domain = _domain(website_url)
+    # A profile website is context, not a restriction. Keep external Reddit,
+    # GitHub, Stack Overflow and news research available alongside the brand.
     if domain:
-        q = f"site:{domain} ({q})"
+        q = f"{q} {domain}"
     url = "https://html.duckduckgo.com/html/?q=" + quote_plus(q)
     headers = {"User-Agent": "AI-Social-Agent/1.0 (+research)"}
     with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
