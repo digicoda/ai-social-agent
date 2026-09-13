@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.5 - 2026-09-13
+
+### Stable Windows upgrade release
+
+- Bumped the application and Windows installer to v1.2.5 so it upgrades cleanly from the existing v1.2.3 installation without reusing the old release version.
+- Includes Tasks 1–10: multi-source research, AI analysis/content generation, multi-profile automation, approval, scheduling, publishing, regression validation, and Windows packaging.
+- Includes the follow-up profile/research fixes: compact profile controls, website-aware intelligent research resources, multiple publishing destinations, 15-minute time selection, visible image settings, active-profile research synchronization, research priority placement, source-result fixes, and AI Analyzer → Create Content regression fixes.
+- Includes Software Update panel/runtime version reporting and release-check support.
+- Preserves in-place upgrade behavior and persistent ProgramData data/config/logs/media.
+
 ## 1.2.3 - 2026-09-12
 
 ### Final Windows release
