@@ -3,28 +3,32 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 from zoneinfo import ZoneInfo
 
 from .database import connect
 
-DEFAULT_PROFILE = {"categories":["technology","ai","marketing"],"sources":["github","reddit","stackoverflow","rss"],"query":"","research_limit":25,"automation_mode":"manual","approval_mode":"human","daily_time":"09:00","timezone":"UTC","publish_provider":"linkedin","auto_publish":False,"ai_provider":"gemini","ai_model":"gemini-2.5-flash","content_limit":10,"time_range":"7d","humanize_content":True,"image_enabled":True,"image_mode":"auto","image_shortcode":"auto","image_prompt":"","image_aspect_ratio":"1:1","image_model":"gemini-2.5-flash-image","image_reference_path":""}
-VALID_SOURCES={"github","reddit","stackoverflow","rss","web"}; VALID_PROVIDERS={"gemini","openai","huggingface"}
-VALID_IMAGE_SHORTCODES={"auto","explainer","advertisement","promotion","marketing","problem","solution","article","infographic","social","case-study"}; VALID_IMAGE_RATIOS={"1:1","4:5","16:9","9:16"}
+DEFAULT_PROFILE = {"categories":["technology","ai","marketing"],"sources":["github","reddit","stackoverflow","rss","web"],"source_mode":"auto","website_url":"","query":"","intent":"all","research_limit":25,"automation_mode":"manual","approval_mode":"human","daily_time":"09:00","timezone":"UTC","publish_providers":["linkedin"],"publish_provider":"linkedin","auto_publish":False,"ai_provider":"gemini","ai_model":"gemini-2.5-flash","content_limit":10,"time_range":"7d","humanize_content":True,"image_enabled":True,"image_mode":"auto","image_shortcode":"auto","image_prompt":"","image_aspect_ratio":"1:1","image_model":"gemini-2.5-flash-image","image_reference_path":""}
+VALID_SOURCES={"github","reddit","stackoverflow","rss","web"}; VALID_PROVIDERS={"gemini","openai","huggingface"}; VALID_PUBLISH_PROVIDERS={"linkedin"}; VALID_IMAGE_SHORTCODES={"auto","explainer","advertisement","promotion","marketing","problem","solution","article","infographic","social","case-study"}; VALID_IMAGE_RATIOS={"1:1","4:5","16:9","9:16"}
 
 def _ensure(connection):
     connection.execute("""CREATE TABLE IF NOT EXISTS automation_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,config TEXT NOT NULL DEFAULT '{}',enabled INTEGER NOT NULL DEFAULT 1,next_run TEXT,last_run TEXT,last_status TEXT NOT NULL DEFAULT 'never',created_at TEXT NOT NULL,updated_at TEXT NOT NULL)"""); connection.commit()
 
 def _merged(config):
-    value=dict(DEFAULT_PROFILE); value.update(config or {})
+    raw=dict(config or {}); value=dict(DEFAULT_PROFILE); value.update(raw)
     value["categories"]=[str(x).strip() for x in value.get("categories",[]) if str(x).strip()] or list(DEFAULT_PROFILE["categories"])
-    value["sources"]=[str(x).strip().lower() for x in value.get("sources",[]) if str(x).strip().lower() in VALID_SOURCES] or list(DEFAULT_PROFILE["sources"])
+    value["sources"]=[str(x).strip().lower() for x in value.get("sources",[]) if str(x).strip().lower() in VALID_SOURCES]
+    value["source_mode"]="manual" if raw.get("source_mode")=="manual" or ("source_mode" not in raw and "sources" in raw) else "auto"
+    value["website_url"]=str(value.get("website_url") or "").strip()[:500]; value["query"]=str(value.get("query") or "").strip()[:500]; value["intent"]=str(value.get("intent") or "all").strip().lower()[:50]
+    if not value["sources"]: value["sources"]=list(DEFAULT_PROFILE["sources"])
     value["automation_mode"]="auto" if value.get("automation_mode")=="auto" else "manual"; value["approval_mode"]="auto" if value.get("approval_mode")=="auto" else "human"
     value["ai_provider"]=str(value.get("ai_provider") or "gemini").lower(); value["ai_provider"]=value["ai_provider"] if value["ai_provider"] in VALID_PROVIDERS else "gemini"
+    legacy=str(value.get("publish_provider") or "linkedin").lower(); raw_publish=value.get("publish_providers",[]); raw_publish=[raw_publish] if isinstance(raw_publish,str) else raw_publish
+    publish=[str(x).strip().lower() for x in raw_publish if str(x).strip().lower() in VALID_PUBLISH_PROVIDERS]
+    if not publish and legacy in VALID_PUBLISH_PROVIDERS: publish=[legacy]
+    value["publish_providers"]=list(dict.fromkeys(publish or ["linkedin"])); value["publish_provider"]=value["publish_providers"][0]
     value["humanize_content"]=bool(value.get("humanize_content",True)); value["image_enabled"]=bool(value.get("image_enabled",True)); value["image_mode"]="manual" if value.get("image_mode")=="manual" else "auto"
-    value["image_shortcode"]=str(value.get("image_shortcode") or "auto").lower(); value["image_shortcode"]=value["image_shortcode"] if value["image_shortcode"] in VALID_IMAGE_SHORTCODES else "auto"
-    value["image_prompt"]=str(value.get("image_prompt") or "")[:4000]; value["image_aspect_ratio"]=str(value.get("image_aspect_ratio") or "1:1"); value["image_aspect_ratio"]=value["image_aspect_ratio"] if value["image_aspect_ratio"] in VALID_IMAGE_RATIOS else "1:1"
-    value["image_model"]=str(value.get("image_model") or "gemini-2.5-flash-image")[:200]; value["image_reference_path"]=str(value.get("image_reference_path") or "")[:1024]
+    value["image_shortcode"]=str(value.get("image_shortcode") or "auto").lower(); value["image_shortcode"]=value["image_shortcode"] if value["image_shortcode"] in VALID_IMAGE_SHORTCODES else "auto"; value["image_prompt"]=str(value.get("image_prompt") or "")[:4000]
+    value["image_aspect_ratio"]=str(value.get("image_aspect_ratio") or "1:1"); value["image_aspect_ratio"]=value["image_aspect_ratio"] if value["image_aspect_ratio"] in VALID_IMAGE_RATIOS else "1:1"; value["image_model"]=str(value.get("image_model") or "gemini-2.5-flash-image")[:200]; value["image_reference_path"]=str(value.get("image_reference_path") or "")[:1024]
     daily=str(value.get("daily_time") or "09:00")
     try:
         hour,minute=[int(x) for x in daily.split(":",1)]; assert 0<=hour<=23 and 0<=minute<=59; value["daily_time"]=f"{hour:02d}:{minute:02d}"
@@ -80,7 +84,7 @@ def delete_profile(database_url,profile_id):
     try:
         _ensure(db); cur=db.execute("DELETE FROM automation_profiles WHERE id=?",(profile_id,)); db.commit()
         if cur.rowcount==1:
-            path=Path(_profile_db_url(database_url,profile_id).replace("sqlite:///",""))
+            path=Path(_profile_db_url(database_url,profile_id).replace("sqlite:///",""));
             if path.exists(): path.unlink()
             return True
         return False

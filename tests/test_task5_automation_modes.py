@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from app.database import connect
 from app.profiles import due_profiles, next_profile_run, save_profile, set_profile_enabled
 
 
@@ -16,6 +17,13 @@ def test_auto_profile_gets_daily_next_run_and_is_due(tmp_path, monkeypatch):
     db = "sqlite:///./data/master.db"
     profile = save_profile(db, "Auto Brand", {"automation_mode": "auto", "daily_time": "09:30", "timezone": "Asia/Karachi"})
     assert profile["next_run"] is not None
+    expected = next_profile_run({"config": profile["config"]}, datetime(2026, 9, 13, 4, 0, tzinfo=timezone.utc))
+    connection = connect(db)
+    try:
+        connection.execute("UPDATE automation_profiles SET next_run=? WHERE id=?", (expected, profile["id"]))
+        connection.commit()
+    finally:
+        connection.close()
     due = due_profiles(db, datetime(2026, 9, 13, 4, 31, tzinfo=timezone.utc))
     assert [p["id"] for p in due] == [profile["id"]]
     assert due[0]["config"]["daily_time"] == "09:30"

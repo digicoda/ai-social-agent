@@ -3,7 +3,7 @@
 ; files, and preserves persistent ProgramData data/config/logs/media.
 
 #define AppName "AI Social Agent"
-#define AppVersion "1.2.3"
+#define AppVersion "1.3.0"
 #define AppPublisher "DigiCoda"
 
 [Setup]
@@ -54,19 +54,11 @@ var
 begin
   Result := '';
   NeedsRestart := False;
-
   StopScript := ExpandConstant('{app}\windows\stop-agent.ps1');
   StartupLink := ExpandConstant('{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent.lnk');
-
   if FileExists(StopScript) then
-    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -File "' + StopScript + '"',
-      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
-
-  if FileExists(StartupLink) then
-    DeleteFile(StartupLink);
-
-  { Persistent ProgramData is deliberately NOT deleted during upgrades. }
+    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), '-NoProfile -ExecutionPolicy Bypass -File "' + StopScript + '"', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if FileExists(StartupLink) then DeleteFile(StartupLink);
 end;
 
 [Run]

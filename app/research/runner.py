@@ -10,6 +10,7 @@ from .github import fetch_github_issues
 from .reddit import fetch_reddit
 from .rss import fetch_rss
 from .stackoverflow import fetch_stackoverflow
+from ..websearch import fetch_web
 
 
 @dataclass(slots=True)
@@ -29,8 +30,9 @@ def run_research(settings: Settings) -> ResearchResult:
     sources: list[tuple[str, Callable[[], list[Problem]]]] = [
         ("github", lambda: fetch_github_issues(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
         ("reddit", lambda: fetch_reddit(limit=settings.research_limit_per_source, user_agent=settings.reddit_user_agent, timeout=settings.research_timeout_seconds)),
-        ("rss", lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source)),
         ("stackoverflow", lambda: fetch_stackoverflow(limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
+        ("rss", lambda: fetch_rss(settings.rss_feed_list, limit=settings.research_limit_per_source)),
+        ("web", lambda: fetch_web(query="technology problems", limit=settings.research_limit_per_source, timeout=settings.research_timeout_seconds)),
     ]
     connection = connect(settings.database_url)
     try:

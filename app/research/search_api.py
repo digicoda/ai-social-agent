@@ -11,6 +11,7 @@ router = APIRouter(prefix="/research", tags=["research"])
 
 class SearchRequest(BaseModel):
     query: str = Field(default="", max_length=500)
+    website_url: str = Field(default="", max_length=500)
     sources: list[str] = Field(default_factory=list, max_length=10)
     category: str = Field(default="all", max_length=50)
     intent: str = Field(default="all", max_length=50)
@@ -74,6 +75,7 @@ def search(payload: SearchRequest, request: Request, x_api_key: str | None = Hea
     return search_research(
         get_settings(),
         query=payload.query,
+        website_url=payload.website_url,
         sources=payload.sources or None,
         category=payload.category,
         intent=payload.intent,
