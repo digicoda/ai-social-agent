@@ -1,7 +1,22 @@
+param([switch]$CleanInstall)
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $DataRoot = Join-Path $env:ProgramData 'AI Social Agent'
 $ConfigFile = Join-Path $DataRoot 'config.env'
+$RecoveryRoot = Join-Path $DataRoot 'updater'
+
+# A genuinely clean install is required when the application payload is gone but
+# persistent ProgramData remains (for example after manually deleting C:\Program Files\AI Social Agent).
+$AppPayloadExists = Test-Path (Join-Path $Root 'app\version.py')
+if ($CleanInstall -or ((Test-Path $DataRoot) -and -not $AppPayloadExists)) {
+    $stop = Join-Path $Root 'windows\stop-agent.ps1'
+    if (Test-Path $stop) {
+        try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stop } catch {}
+    }
+    if (Test-Path $DataRoot) {
+        Remove-Item $DataRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 function Find-Python {
     foreach ($candidate in @('py','python')) {
@@ -26,7 +41,12 @@ if (-not $Python) {
     throw 'Python 3.11+ is required. Install Python 3.11 or newer, then run this installer again.'
 }
 
-New-Item -ItemType Directory -Force -Path $DataRoot, (Join-Path $DataRoot 'data'), (Join-Path $DataRoot 'logs'), (Join-Path $DataRoot 'media'), (Join-Path $DataRoot 'pids') | Out-Null
+New-Item -ItemType Directory -Force -Path $DataRoot, (Join-Path $DataRoot 'data'), (Join-Path $DataRoot 'logs'), (Join-Path $DataRoot 'media'), (Join-Path $DataRoot 'pids'), $RecoveryRoot | Out-Null
+
+# Keep a recovery uninstaller outside the application folder so it remains usable
+# even if the Program Files directory is manually removed.
+$RecoveryUninstaller = Join-Path $RecoveryRoot 'uninstall-agent.ps1'
+Copy-Item (Join-Path $Root 'windows\uninstall-agent.ps1') $RecoveryUninstaller -Force
 
 $VenvPath = Join-Path $Root '.venv'
 $VenvPython = Join-Path $VenvPath 'Scripts\python.exe'

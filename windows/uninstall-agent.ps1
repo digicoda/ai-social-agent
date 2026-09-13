@@ -10,8 +10,7 @@ $CopiedScript = (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path
 
 New-Item -ItemType Directory -Force -Path $UninstallerRoot | Out-Null
 
-# The live application directory is removed by Inno Setup, so the detached copy
-# must live under ProgramData until the uninstall has completed.
+# Always detach the cleanup helper before deleting the live application folder.
 if ($CurrentScript -ne $CopiedScript) {
     Copy-Item $CurrentScript $SelfCopy -Force
     $args = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopy`" -AppRoot `"$Root`""
@@ -21,7 +20,7 @@ if ($CurrentScript -ne $CopiedScript) {
 
 $stop = Join-Path $Root 'windows\stop-agent.ps1'
 if (Test-Path $stop) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stop
+    try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stop } catch {}
 }
 
 $uninstaller = $null
@@ -36,12 +35,32 @@ foreach ($path in $roots) {
         if ($uninstaller) { break }
     }
 }
-if (-not $uninstaller) { throw 'AI Social Agent uninstaller could not be found in Windows uninstall registry.' }
 
-$exe = $uninstaller.Trim()
-if ($exe.StartsWith('"')) { $exe = $exe.Substring(1,$exe.IndexOf('"',1)-1) }
-if (-not (Test-Path $exe)) { throw "AI Social Agent uninstaller is missing: $exe" }
+if ($uninstaller) {
+    $exe = $uninstaller.Trim()
+    if ($exe.StartsWith('"')) {
+        $endQuote = $exe.IndexOf('"', 1)
+        if ($endQuote -gt 1) { $exe = $exe.Substring(1, $endQuote - 1) }
+    }
+    if (Test-Path $exe) {
+        # Ask Windows for elevation and wait for the actual Inno Setup uninstaller.
+        $process = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($process.ExitCode)." }
+        exit 0
+    }
+}
 
-# Ask Windows for elevation when needed and wait for the actual uninstaller.
-$process = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
-if ($process.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($process.ExitCode)." }
+# Recovery path: the application folder or registry entry may already have been
+# deleted manually. Remove the persistent data and remaining application files
+# directly so a subsequent installation is genuinely clean.
+try {
+    $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\AI Social Agent.lnk'
+    if (Test-Path $startup) { Remove-Item $startup -Force -ErrorAction SilentlyContinue }
+} catch {}
+
+if (Test-Path $Root) {
+    Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $DataRoot) {
+    Remove-Item $DataRoot -Recurse -Force -ErrorAction SilentlyContinue
+}

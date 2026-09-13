@@ -80,7 +80,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish-v1-3-1:
+  publish-v1-3-2:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build-installer
     runs-on: windows-latest
@@ -94,16 +94,16 @@ jobs:
           name: AI-Social-Agent-Windows-Installer
           path: release
 
-      - name: Publish GitHub release v1.3.1
+      - name: Publish GitHub release v1.3.2
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v1.3.1 --repo "${{ github.repository }}" 2>$null
+          gh release view v1.3.2 --repo "${{ github.repository }}" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create v1.3.1 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.3.1" --notes "Windows maintenance release. Fixes Settings version reporting, reliable Windows uninstall, in-app upgrade path, and preserves the verified profile/research/analyzer/content stability fixes."
+            gh release create v1.3.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.3.2" --notes "Windows clean-install and uninstall maintenance release. Fixes stale ProgramData/config reuse after manual deletion, provides a recovery uninstaller, and keeps upgrades data-preserving when the existing installation is healthy."
           }
-          gh release upload v1.3.1 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
-          gh release edit v1.3.1 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.3.1" --notes "Windows maintenance release. Fixes Settings version reporting, reliable Windows uninstall, in-app upgrade path, and preserves the verified profile/research/analyzer/content stability fixes."
+          gh release upload v1.3.2 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
+          gh release edit v1.3.2 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.3.2" --notes "Windows clean-install and uninstall maintenance release. Fixes stale ProgramData/config reuse after manual deletion, provides a recovery uninstaller, and keeps upgrades data-preserving when the existing installation is healthy."
 
 # Final installer verification trigger.
