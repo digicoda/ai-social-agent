@@ -92,6 +92,15 @@ def system_update(request:Request,x_api_key:str|None=Header(default=None)):
     script=Path(__file__).resolve().parents[1]/"windows"/"update-agent.ps1"
     if not script.exists():raise HTTPException(status_code=500,detail="Windows updater is missing from this installation.")
     creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0); subprocess.Popen(["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(script)],cwd=str(script.parent.parent),creationflags=creationflags,close_fds=True);return {"status":"started","message":"Update started. The service will restart automatically after installation."}
+@app.post("/system/uninstall")
+def system_uninstall(request:Request,x_api_key:str|None=Header(default=None)):
+    _authorize(x_api_key,request)
+    if os.name!="nt":raise HTTPException(status_code=400,detail="Windows uninstall is available only in the Windows Desktop edition.")
+    script=Path(__file__).resolve().parents[1]/"windows"/"uninstall-agent.ps1"
+    if not script.exists():raise HTTPException(status_code=500,detail="Windows uninstaller helper is missing from this installation.")
+    creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0)
+    subprocess.Popen(["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(script)],cwd=str(script.parent.parent),creationflags=creationflags,close_fds=True)
+    return {"status":"started","message":"Uninstall started. AI Social Agent will be removed after the running service stops."}
 @app.get("/profiles")
 def profiles_get(request:Request,x_api_key:str|None=Header(default=None)):_authorize(x_api_key,request);return {"items":list_profiles(get_settings().database_url)}
 @app.get("/profiles/{profile_id}")
