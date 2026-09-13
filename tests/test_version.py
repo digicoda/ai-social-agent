@@ -1,9 +1,9 @@
-from types import SimpleNamespace
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app import main
-from app.version import compare_versions, latest_release, version_payload
+from app.version import APP_VERSION, compare_versions, latest_release, version_payload
 
 
 def test_compare_versions_handles_v_prefix_and_patch_numbers():
@@ -50,10 +50,23 @@ def test_version_payload_reports_update(monkeypatch):
     )
     result = version_payload()
 
-    assert result["version"] == "1.3.0"
+    assert result["version"] == APP_VERSION
     assert result["latest_version"] == "1.3.1"
     assert result["update_available"] is True
     assert result["status"] == "Update available."
+
+
+def test_installer_version_matches_application_version():
+    installer = Path(__file__).parents[1] / "installer" / "AI-Social-Agent.iss"
+    text = installer.read_text(encoding="utf-8")
+    marker = '#define AppVersion "'
+    start = text.index(marker) + len(marker)
+    installed_version = text[start : text.index('"', start)]
+    assert installed_version == APP_VERSION
+
+
+def test_fastapi_version_uses_application_version():
+    assert main.app.version == APP_VERSION
 
 
 def test_version_endpoint_returns_runtime_metadata(monkeypatch):
@@ -62,12 +75,12 @@ def test_version_endpoint_returns_runtime_metadata(monkeypatch):
         "version_payload",
         lambda **kwargs: {
             "name": "AI Social Agent",
-            "version": "1.3.0",
-            "release": "v1.3.0",
+            "version": APP_VERSION,
+            "release": f"v{APP_VERSION}",
             "platform": "server",
-            "latest_version": "1.3.0",
-            "latest_release": "AI Social Agent v1.3.0",
-            "latest_release_url": "https://github.com/digicoda/ai-social-agent/releases/tag/v1.3.0",
+            "latest_version": APP_VERSION,
+            "latest_release": f"AI Social Agent v{APP_VERSION}",
+            "latest_release_url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
             "published_at": "2026-09-13T00:00:00Z",
             "update_available": False,
             "status": "Up to date.",
@@ -81,6 +94,6 @@ def test_version_endpoint_returns_runtime_metadata(monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["version"] == "1.3.0"
-    assert data["latest_version"] == "1.3.0"
+    assert data["version"] == APP_VERSION
+    assert data["latest_version"] == APP_VERSION
     assert data["status"] == "Up to date."
