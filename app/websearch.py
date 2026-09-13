@@ -4,15 +4,29 @@ import hashlib
 import html
 import re
 from datetime import datetime, timezone
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 
 from .schemas import Problem
 
 
-def fetch_web(query: str, limit: int = 10, timeout: float = 15.0) -> list[Problem]:
+def _domain(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw if "://" in raw else "https://" + raw)
+    host = (parsed.hostname or "").lower().strip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host if re.fullmatch(r"[a-z0-9.-]+", host or "") else ""
+
+
+def fetch_web(query: str, limit: int = 10, timeout: float = 15.0, website_url: str = "") -> list[Problem]:
     q = query.strip() or "technology problems"
+    domain = _domain(website_url)
+    if domain:
+        q = f"site:{domain} ({q})"
     url = "https://html.duckduckgo.com/html/?q=" + quote_plus(q)
     headers = {"User-Agent": "AI-Social-Agent/1.0 (+research)"}
     with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
@@ -36,5 +50,5 @@ def fetch_web(query: str, limit: int = 10, timeout: float = 15.0) -> list[Proble
             continue
         now = datetime.now(timezone.utc)
         external_id = "web:" + hashlib.sha1(href.encode("utf-8")).hexdigest()[:20]
-        results.append(Problem(source="web", external_id=external_id, title=title, url=href, summary=body[:500], body=body, tags=[], score=0, comments=0, published_at=now, discovered_at=now, metadata={"provider": "DuckDuckGo HTML"}))
+        results.append(Problem(source="web", external_id=external_id, title=title, url=href, summary=body[:500], body=body, tags=[], score=0, comments=0, published_at=now, discovered_at=now, metadata={"provider": "DuckDuckGo HTML", "website_domain": domain}))
     return results
