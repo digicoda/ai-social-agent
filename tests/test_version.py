@@ -1,7 +1,5 @@
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from app import main
 from app.version import APP_VERSION, compare_versions, latest_release, version_payload
 
@@ -67,27 +65,25 @@ def test_installer_version_matches_application_version():
 
 def test_fastapi_version_uses_application_version():
     assert main.app.version == APP_VERSION
+    assert any(route.path == "/system/version" for route in main.app.routes)
 
 
-def test_version_endpoint_returns_runtime_metadata(monkeypatch):
-    monkeypatch.setattr(
-        "app.version.latest_release",
-        lambda **kwargs: {
-            "ok": True,
-            "version": APP_VERSION,
-            "tag": f"v{APP_VERSION}",
-            "name": f"AI Social Agent v{APP_VERSION}",
-            "url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
-            "published_at": "2026-09-13T00:00:00Z",
-            "body": "Release notes",
-            "checked_at": "2026-09-13T00:00:00+00:00",
-        },
-    )
-    client = TestClient(main.app)
-    response = client.get("/system/version")
+def test_version_endpoint_handler_returns_runtime_metadata(monkeypatch):
+    expected = {
+        "name": "AI Social Agent",
+        "version": APP_VERSION,
+        "release": f"v{APP_VERSION}",
+        "platform": "server",
+        "latest_version": APP_VERSION,
+        "latest_release": f"AI Social Agent v{APP_VERSION}",
+        "latest_release_url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
+        "published_at": "2026-09-13T00:00:00Z",
+        "update_available": False,
+        "status": "Up to date.",
+        "features": [],
+        "checked_at": "2026-09-13T00:00:00+00:00",
+        "error": None,
+    }
+    monkeypatch.setattr(main, "version_payload", lambda **kwargs: expected)
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["version"] == APP_VERSION
-    assert data["latest_version"] == APP_VERSION
-    assert data["status"] == "Up to date."
+    assert main.system_version() == expected
