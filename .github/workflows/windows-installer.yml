@@ -2,7 +2,7 @@ name: Windows Desktop Installer
 
 on:
   push:
-    branches: [main, 'v1.2.3']
+    branches: [main, 'v1.2.5']
     paths:
       - 'app/**'
       - 'tests/**'
@@ -80,8 +80,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish-v1-2-3:
-    if: github.ref == 'refs/heads/v1.2.3' && github.event_name == 'push'
+  publish-v1-2-5:
+    if: github.ref == 'refs/heads/v1.2.5' && github.event_name == 'push'
     needs: build-installer
     runs-on: windows-latest
     timeout-minutes: 10
@@ -99,11 +99,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v1.2.3 --repo "${{ github.repository }}" 2>$null
+          gh release view v1.2.5 --repo "${{ github.repository }}" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create v1.2.3 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.3" --notes "Final Windows Desktop installer after Tasks 1–10. Includes the completed multi-source research, incremental AI analyzer, multi-profile automation, approval/scheduling/publishing pipeline, regression validation, branded installer icon, checksum, and release packaging."
+            gh release create v1.2.5 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.5" --notes "Stable Windows upgrade release. Includes Tasks 1–10 plus the subsequent profile/research UI fixes, software update/version reporting, compact profile controls, intelligent profile-aware research resources, multiple publishing destinations, 15-minute scheduling options, visible image settings, active-profile research synchronization, research priority placement, source-result fixes, and AI Analyzer to Create Content regression fixes."
           }
-          gh release upload v1.2.3 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
-          gh release edit v1.2.3 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.3" --notes "Final Windows Desktop installer after Tasks 1–10. Includes the completed multi-source research, incremental AI analyzer, multi-profile automation, approval/scheduling/publishing pipeline, regression validation, branded installer icon, checksum, and release packaging."
+          gh release upload v1.2.5 release/AI-Social-Agent-Setup.exe release/AI-Social-Agent-Setup.exe.sha256 --repo "${{ github.repository }}" --clobber
+          gh release edit v1.2.5 --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AI Social Agent v1.2.5" --notes "Stable Windows upgrade release. Includes Tasks 1–10 plus the subsequent profile/research UI fixes, software update/version reporting, compact profile controls, intelligent profile-aware research resources, multiple publishing destinations, 15-minute scheduling options, visible image settings, active-profile research synchronization, research priority placement, source-result fixes, and AI Analyzer to Create Content regression fixes."
 
 # Final installer verification trigger.
