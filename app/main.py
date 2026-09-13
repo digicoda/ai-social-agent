@@ -25,10 +25,12 @@ from .scheduler import run_due_schedules
 from .scheduling import cancel_draft_schedule, schedule_draft, schedules
 from .system_settings import provider_status, read_settings, save_settings, test_provider
 from .image_api import router as image_router
+from .version import APP_VERSION, FEATURES, version_payload
+
 settings=get_settings()
 if settings.app_env.lower()=="production" and not settings.session_secret: raise RuntimeError("SESSION_SECRET must be configured in production.")
 session_secret=settings.session_secret or secrets.token_urlsafe(32)
-app=FastAPI(title="AI Social Agent",version="1.3.0")
+app=FastAPI(title="AI Social Agent",version=APP_VERSION)
 app.include_router(research_search_router); app.include_router(image_router)
 app.add_middleware(SessionMiddleware,secret_key=session_secret,session_cookie="ai_social_session",same_site="lax",https_only=settings.app_env.lower()=="production",max_age=60*60*8)
 @app.middleware("http")
@@ -71,6 +73,9 @@ def dashboard_logout_route(request:Request):dashboard_logout(request);return {"a
 def health():return {"status":"ok","service":"ai-social-agent"}
 @app.get("/ready")
 def ready(request:Request,x_api_key:str|None=Header(default=None)):_authorize(x_api_key,request);return check_readiness(get_settings())
+@app.get("/system/version")
+def system_version():
+    return version_payload(token=os.environ.get("GITHUB_RELEASE_TOKEN", ""),platform="windows" if os.name=="nt" else "server")
 @app.get("/system/settings")
 def system_settings(request:Request,x_api_key:str|None=Header(default=None)):_authorize(x_api_key,request);return {"settings":read_settings(),"providers":provider_status()}
 @app.put("/system/settings")
