@@ -1,58 +1,33 @@
 <style>
-/* Profile/research polish: compact controls without changing the dashboard layout. */
 #profileResearchNote{margin:0 0 10px;padding:8px 10px;border:1px solid #e4e0ff;border-radius:8px;background:#f8f6ff;color:#6655a8;font-size:10px;line-height:1.45;display:none}
 .profile-time-select{height:38px;min-height:38px!important;font-variant-numeric:tabular-nums}
 .check-row input[type=checkbox]{width:14px!important;height:14px!important;min-width:14px!important;min-height:14px!important;margin:0!important}
-.profile-check-grid{gap:3px!important}
-#pfSourcesBox .check-row{padding:3px 6px!important;margin:0!important}
+.profile-check-grid{gap:3px!important}#pfSourcesBox .check-row{padding:3px 6px!important;margin:0!important}
 .profile-multi-publish{display:flex;flex-wrap:wrap;gap:4px}
-.update-version-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:#fafbfc;margin-bottom:12px}
-.update-version-card strong{font-size:13px}.update-version-card small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.update-version-badge{font-weight:800;font-size:11px;padding:5px 8px;border-radius:999px;background:#ece9ff;color:#5d43c7;white-space:nowrap}
-@media(max-width:700px){.update-version-card{align-items:flex-start;flex-direction:column}}
+.update-version-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:#fafbfc;margin-bottom:12px}.update-version-card strong{font-size:13px}.update-version-card small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.update-version-badge{font-weight:800;font-size:11px;padding:5px 8px;border-radius:999px;background:#ece9ff;color:#5d43c7;white-space:nowrap}
+.software-update-panel{border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px}.software-update-panel h3{margin:0 0 5px;font-size:15px}.software-update-panel p{margin:0 0 12px;color:var(--muted);font-size:11px}.update-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.update-item{padding:11px;border:1px solid var(--line);border-radius:9px;background:#fafbfc}.update-item strong{display:block;font-size:11px}.update-item span{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.4}.update-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}.update-status{font-size:10px;color:var(--muted)}
+@media(max-width:700px){.update-version-card{align-items:flex-start;flex-direction:column}.update-grid{grid-template-columns:1fr}}
 </style>
 <script>
 (function(){
-const APP_VERSION='1.2.3';
+const APP_VERSION='1.2.3',REPO_URL='https://github.com/digicoda/ai-social-agent';
 const $=id=>document.getElementById(id);
 const api=async(url,opts={})=>{const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail||d));return d};
-const SOURCES=['github','reddit','stackoverflow','rss','web'];
 const SOURCE_NAMES={github:'GitHub',reddit:'Reddit',stackoverflow:'Stack Overflow',rss:'RSS / News',web:'Web Search'};
 function cookieProfile(){const m=document.cookie.match('(?:^|; )ai_social_profile=([^;]*)');return m?decodeURIComponent(m[1]):''}
 function autoSources(categories){const c=new Set((categories||[]).map(x=>String(x).toLowerCase()));const out=new Set(['web','reddit','rss']);if([...c].some(x=>['technology','ai','development','security','wordpress','ecommerce'].includes(x)))['github','stackoverflow'].forEach(x=>out.add(x));return [...out]}
 async function currentProfile(){const id=cookieProfile();const d=await api('/profiles');if(id){const p=d.items.find(x=>String(x.id)===String(id));if(p)return p}return null}
 function setSelect(id,value){const el=$(id);if(el&&value!==undefined)el.value=value}
-function applyProfileToResearch(p){
- const note=$('profileResearchNote');
- if(!note)return;
- if(!p){note.style.display='block';note.innerHTML='<strong>Default / Shared research</strong> — choose a profile above to automatically use its website, keywords, categories, intent and resource policy.';return}
- const c=p.config||{};const cats=Array.isArray(c.categories)?c.categories:[];const sources=c.source_mode==='manual'?(c.sources||[]):autoSources(cats);
- setSelect('rq',c.query||'');setSelect('rc',cats[0]||'all');setSelect('ri',c.intent||'all');setSelect('rt',c.time_range||'7d');
- const rs=$('rs');if(rs){const selected=new Set(sources);[...rs.options].forEach(o=>o.selected=selected.has(o.value));document.querySelectorAll('#sourceMulti input[type=checkbox]').forEach(cb=>{const o=rs.options[Number(cb.dataset.index)];if(o)cb.checked=o.selected});window.__updateResearchSourceLabel?.()}
- note.style.display='block';note.innerHTML=`<strong>Profile: ${String(p.name).replace(/[&<>"']/g,'')}</strong> — research controls are synced from this profile. Website context: ${String(c.website_url||'not set').replace(/[&<>"']/g,'')}. Resources: ${(sources||[]).map(x=>SOURCE_NAMES[x]||x).join(', ')}.`;
- try{window.__researchState=window.__researchState||{};window.__researchState.values={...(window.__researchState.values||{}),rq:c.query||'',rc:cats[0]||'all',ri:c.intent||'all',rt:c.time_range||'7d',rs:sources};sessionStorage.setItem('aiSocialResearchState',JSON.stringify(window.__researchState))}catch(e){}
-}
+function applyProfileToResearch(p){const note=$('profileResearchNote');if(!note)return;if(!p){note.style.display='block';note.innerHTML='<strong>Default / Shared research</strong> — choose a profile above to automatically use its website, keywords, categories, intent and resource policy.';return}const c=p.config||{},cats=Array.isArray(c.categories)?c.categories:[],sources=c.source_mode==='manual'?(c.sources||[]):autoSources(cats);setSelect('rq',c.query||'');setSelect('rc',cats[0]||'all');setSelect('ri',c.intent||'all');setSelect('rt',c.time_range||'7d');const rs=$('rs');if(rs){const selected=new Set(sources);[...rs.options].forEach(o=>o.selected=selected.has(o.value));document.querySelectorAll('#sourceMulti input[type=checkbox]').forEach(cb=>{const o=rs.options[Number(cb.dataset.index)];if(o)cb.checked=o.selected});window.__updateResearchSourceLabel?.()}note.style.display='block';note.innerHTML=`<strong>Profile: ${String(p.name).replace(/[&<>"']/g,'')}</strong> — research controls are synced from this profile. Website context: ${String(c.website_url||'not set').replace(/[&<>"']/g,'')}. Resources: ${sources.map(x=>SOURCE_NAMES[x]||x).join(', ')}.`;try{window.__researchState=window.__researchState||{};window.__researchState.values={...(window.__researchState.values||{}),rq:c.query||'',rc:cats[0]||'all',ri:c.intent||'all',rt:c.time_range||'7d',rs:sources};sessionStorage.setItem('aiSocialResearchState',JSON.stringify(window.__researchState))}catch(e){}}
 async function syncProfile(){try{applyProfileToResearch(await currentProfile())}catch(e){const n=$('profileResearchNote');if(n){n.style.display='block';n.textContent='Profile settings could not be loaded. Research remains available manually.'}}}
-function patchPriority(){
- const root=$('content');if(!root||$('title')?.textContent!=='Research')return;
- const selects=[...root.querySelectorAll('select')];const sort=selects.find(x=>/sort|priority|relevance/i.test(x.id+' '+x.getAttribute('aria-label')+' '+x.previousElementSibling?.textContent));if(!sort)return;
- const head=sort.closest('.field')?.previousElementSibling||sort.parentElement?.previousElementSibling;const container=sort.closest('.panel')?.querySelector('.section-head');if(!container||container.querySelector('.research-priority-inline'))return;
- const wrap=document.createElement('div');wrap.className='toolbar research-priority-inline';wrap.style.marginLeft='auto';const label=document.createElement('span');label.className='muted tiny';label.textContent='Priority';wrap.append(label,sort.closest('.field')||sort);container.appendChild(wrap);
+function patchPriority(){const root=$('content');if(!root||$('title')?.textContent!=='Research')return;const selects=[...root.querySelectorAll('select')];const sort=selects.find(x=>/sort|priority|relevance/i.test(x.id+' '+x.getAttribute('aria-label')+' '+x.previousElementSibling?.textContent));if(!sort)return;const container=sort.closest('.panel')?.querySelector('.section-head');if(!container||container.querySelector('.research-priority-inline'))return;const field=sort.closest('.field')||sort;const wrap=document.createElement('div');wrap.className='toolbar research-priority-inline';wrap.style.marginLeft='auto';const label=document.createElement('span');label.className='muted tiny';label.textContent='Priority';wrap.append(label,field);container.appendChild(wrap)}
+function patchSettingsVersion(){const root=$('content');if(!root||$('title')?.textContent!=='Settings')return;let card=root.querySelector('.update-version-card');if(!card){card=document.createElement('div');card.className='update-version-card';card.innerHTML=`<div><strong>AI Social Agent</strong><small>Current installed application version</small></div><span class="update-version-badge">v${APP_VERSION}</span>`;root.prepend(card)}
+ let tab=root.querySelector('#softwareUpdateTab');if(!tab){const tabs=root.querySelector('.tabs');if(tabs){tab=document.createElement('button');tab.type='button';tab.id='softwareUpdateTab';tab.className='tab';tab.textContent='Software Updates';tabs.appendChild(tab)}}
+ if(tab&&!tab.dataset.bound){tab.dataset.bound='1';tab.onclick=()=>showUpdates(root,tab)}
+ if(root.dataset.updateDefault!=='1'){root.dataset.updateDefault='1';setTimeout(()=>{const existing=[...root.querySelectorAll('.tab')].find(x=>x!==tab&&x.classList.contains('active'));if(!existing&&tab)tab.click()},0)}
 }
-function patchSettingsVersion(){
- const root=$('content');if(!root||$('title')?.textContent!=='Settings'||root.querySelector('.update-version-card'))return;
- const card=document.createElement('div');card.className='update-version-card';card.innerHTML=`<div><strong>AI Social Agent</strong><small>Current installed application version</small></div><span class="update-version-badge">v${APP_VERSION}</span>`;
- root.prepend(card);
- const tabs=[...root.querySelectorAll('.tab,.config-tab,button')];const update=tabs.find(x=>/software update|updates?|update/i.test(x.textContent||''));if(update){update.title=`Software Updates — current v${APP_VERSION}`;}
-}
-function install(){
- const root=$('content');if(!root)return;
- if($('title')?.textContent==='Research'){
-  if(!$('profileResearchNote')){$('researchResults')?.parentElement?.insertAdjacentHTML('beforebegin','<div id="profileResearchNote"></div>')}
-  syncProfile();patchPriority();
- }
- if($('title')?.textContent==='Settings')patchSettingsVersion();
-}
-window.addEventListener('profile:refresh',syncProfile);
-setTimeout(install,350);new MutationObserver(()=>install()).observe(document.body,{childList:true,subtree:true});
+function showUpdates(root,tab){[...root.querySelectorAll('.tab')].forEach(x=>x.classList.remove('active'));tab.classList.add('active');let panel=root.querySelector('#softwareUpdatePanel');if(!panel){panel=document.createElement('div');panel.id='softwareUpdatePanel';panel.className='software-update-panel';panel.innerHTML=`<h3>Software Updates</h3><p>Check the installed version, release channel and available application capabilities. Updating is kept separate from content, research and profile data.</p><div class="update-grid"><div class="update-item"><strong>Installed version</strong><span>v${APP_VERSION}</span></div><div class="update-item"><strong>Release channel</strong><span>Stable</span></div><div class="update-item"><strong>Update method</strong><span>Windows installer / release package</span></div><div class="update-item"><strong>Research</strong><span>Web, GitHub, Reddit, Stack Overflow and RSS</span></div><div class="update-item"><strong>AI</strong><span>Gemini, OpenAI and Hugging Face adapters</span></div><div class="update-item"><strong>Automation</strong><span>Profiles, daily scheduling, approval and publishing pipeline</span></div><div class="update-item"><strong>Content quality</strong><span>Human Quality Engine before approval</span></div><div class="update-item"><strong>Images</strong><span>Gemini image generation, creative modes and reference support</span></div><div class="update-item"><strong>Publishing</strong><span>Profile-based publishing destinations; only configured adapters are executable</span></div></div><div class="update-actions"><button type="button" class="btn" id="checkSoftwareUpdate">Check release</button><button type="button" class="btn secondary" id="copyVersion">Copy version</button><span class="update-status" id="updateStatus">Current: v${APP_VERSION}</span></div>`;root.appendChild(panel)}else panel.style.display='block';root.querySelectorAll('.provider-form,.action-grid,.settings-layout > .panel').forEach(x=>{if(x!==panel)x.style.display=x.id==='softwareUpdatePanel'?'':'block'});$('checkSoftwareUpdate').onclick=()=>{window.open(REPO_URL+'/releases','_blank','noopener');$('updateStatus').textContent='Opened the release list. Installed version: v'+APP_VERSION};$('copyVersion').onclick=async()=>{try{await navigator.clipboard.writeText('AI Social Agent v'+APP_VERSION);$('updateStatus').textContent='Version copied: v'+APP_VERSION}catch(e){$('updateStatus').textContent='AI Social Agent v'+APP_VERSION}}}
+function install(){const root=$('content');if(!root)return;if($('title')?.textContent==='Research'){if(!$('profileResearchNote'))$('researchResults')?.parentElement?.insertAdjacentHTML('beforebegin','<div id="profileResearchNote"></div>');syncProfile();patchPriority()}if($('title')?.textContent==='Settings')patchSettingsVersion()}
+window.addEventListener('profile:refresh',syncProfile);setTimeout(install,350);new MutationObserver(()=>install()).observe(document.body,{childList:true,subtree:true});
 })();
 </script>
