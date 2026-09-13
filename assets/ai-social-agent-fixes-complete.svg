@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">AI Social Agent — Fixes 1–10</title>
+  <desc id="desc">Completion summary for the AI Social Agent fix set.</desc>
+  <rect width="1200" height="760" rx="28" fill="#111827"/>
+  <rect x="36" y="36" width="1128" height="688" rx="22" fill="#1f2937" stroke="#374151"/>
+  <text x="72" y="100" fill="#f9fafb" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="700">AI Social Agent</text>
+  <text x="72" y="138" fill="#9ca3af" font-family="Arial,Helvetica,sans-serif" font-size="20">Fix &amp; verification status — 1 through 10</text>
+  <rect x="918" y="70" width="190" height="54" rx="27" fill="#065f46"/>
+  <text x="1013" y="105" text-anchor="middle" fill="#d1fae5" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700">COMPLETED</text>
+
+  <g font-family="Arial,Helvetica,sans-serif" font-size="18">
+    <rect x="72" y="178" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="209" fill="#d1fae5">✓</text><text x="125" y="209" fill="#f9fafb">1. Software Update tab + runtime/latest version reporting</text>
+    <rect x="72" y="238" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="269" fill="#d1fae5">✓</text><text x="125" y="269" fill="#f9fafb">2. Compact profile checkbox/control sizing</text>
+    <rect x="72" y="298" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="329" fill="#d1fae5">✓</text><text x="125" y="329" fill="#f9fafb">3. Profile website context + intelligent research resources</text>
+    <rect x="72" y="358" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="389" fill="#d1fae5">✓</text><text x="125" y="389" fill="#f9fafb">4. Multiple publishing destinations per profile</text>
+    <rect x="72" y="418" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="449" fill="#d1fae5">✓</text><text x="125" y="449" fill="#f9fafb">5. Professional 15-minute time dropdown</text>
+    <rect x="72" y="478" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="509" fill="#d1fae5">✓</text><text x="125" y="509" fill="#f9fafb">6. Image settings exposed in profile UI</text>
+    <rect x="72" y="538" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="569" fill="#d1fae5">✓</text><text x="125" y="569" fill="#f9fafb">7. Active profile drives Research Intelligence</text>
+    <rect x="72" y="598" width="1056" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="629" fill="#d1fae5">✓</text><text x="125" y="629" fill="#f9fafb">8. Research priority moved beside results title</text>
+    <rect x="72" y="658" width="516" height="48" rx="10" fill="#111827"/>
+    <text x="92" y="689" fill="#d1fae5">✓</text><text x="125" y="689" fill="#f9fafb">9. Web / Reddit / Stack Overflow coverage</text>
+    <rect x="612" y="658" width="516" height="48" rx="10" fill="#111827"/>
+    <text x="632" y="689" fill="#d1fae5">✓</text><text x="665" y="689" fill="#f9fafb">10. AI Analyzer → Create Content regression</text>
+  </g>
+</svg>
