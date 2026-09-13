@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 
 APP_NAME = "AI Social Agent"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 RELEASE_TAG = f"v{APP_VERSION}"
 REPOSITORY = "digicoda/ai-social-agent"
 
