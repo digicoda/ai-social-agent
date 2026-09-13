@@ -29,7 +29,7 @@ def test_uninstall_helper_and_installer_payload_exist():
 
 def test_clean_install_removes_stale_programdata():
     text = (ROOT / "windows" / "install-agent.ps1").read_text(encoding="utf-8")
-    assert "-CleanInstall" in text
+    assert "param([switch]$CleanInstall)" in text
     assert "-not $AppPayloadExists" in text
     assert "Remove-Item $DataRoot -Recurse -Force" in text
     assert "updater" in text
