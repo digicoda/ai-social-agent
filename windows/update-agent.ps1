@@ -13,8 +13,6 @@ $CopiedScript = (Resolve-Path $SelfCopy -ErrorAction SilentlyContinue).Path
 
 New-Item -ItemType Directory -Force -Path $UpdaterRoot | Out-Null
 
-# Never run the updater from the live application directory because the installer
-# replaces that directory. Run a detached copy from ProgramData instead.
 if ($CurrentScript -ne $CopiedScript) {
     Copy-Item $CurrentScript $SelfCopy -Force
     $args = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopy`" -AppRoot `"$Root`""
@@ -25,6 +23,22 @@ if ($CurrentScript -ne $CopiedScript) {
 $ApiHeaders = @{ 'User-Agent' = 'AI-Social-Agent-Updater'; 'Accept' = 'application/vnd.github+json' }
 $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $ApiHeaders -TimeoutSec 15
 if (-not $Release.tag_name) { throw 'No published AI Social Agent release is available.' }
+
+# Never install an older release over the current application.
+$releaseVersion = ([string]$Release.tag_name).TrimStart('v','V')
+$appVersion = ''
+try {
+    $versionFile = Join-Path $Root 'app\version.py'
+    $line = Select-String -Path $versionFile -Pattern 'APP_VERSION\s*=\s*["'']([^"'']+)["'']' | Select-Object -First 1
+    if ($line) { $appVersion = $line.Matches[0].Groups[1].Value }
+} catch {}
+function Compare-Version([string]$a,[string]$b) {
+    $pa=@($a.Split('.') | ForEach-Object { [int]($_ -replace '\D.*$','') })
+    $pb=@($b.Split('.') | ForEach-Object { [int]($_ -replace '\D.*$','') })
+    for($i=0;$i -lt [Math]::Max($pa.Count,$pb.Count);$i++){ $x=if($i -lt $pa.Count){$pa[$i]}else{0};$y=if($i -lt $pb.Count){$pb[$i]}else{0};if($x -ne $y){return $(if($x -lt $y){-1}else{1})} }
+    return 0
+}
+if ($appVersion -and (Compare-Version $releaseVersion $appVersion) -le 0) { throw "No newer published release is available. Installed: $appVersion; latest: $releaseVersion." }
 
 $Asset = @($Release.assets) | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
 if (-not $Asset) { throw "Release $($Release.tag_name) does not contain $AssetName." }
@@ -42,17 +56,11 @@ if ($ChecksumAsset) {
 }
 
 & (Join-Path $Root 'windows\stop-agent.ps1')
-
 $installer = Start-Process -FilePath $Download -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
 if ($installer.ExitCode -ne 0) { throw "Installer failed with exit code $($installer.ExitCode)." }
-
 Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'windows\start-agent.ps1') -WindowStyle Hidden
-
 for ($i = 1; $i -le 30; $i++) {
-    try {
-        $health = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 2
-        if ($health.StatusCode -eq 200) { exit 0 }
-    } catch {}
+    try { $health = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 2; if ($health.StatusCode -eq 200) { exit 0 } } catch {}
     Start-Sleep -Seconds 1
 }
 throw 'Update installed, but the local API did not become healthy within 30 seconds.'
