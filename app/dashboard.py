@@ -52,7 +52,7 @@ def dashboard_page(request: Request) -> HTMLResponse:
     account_exists = has_users(settings.database_url)
     for key, value in {"__AUTH_CONFIGURED__": "true" if _configured() else "false", "__HAS_ACCOUNT__": "true" if account_exists else "false", "__AUTHENTICATED__": "true" if request.session.get("authenticated") else "false"}.items():
         html = html.replace(key, value)
-    scripts = ["full_ui.js", "ui_polish.js", "workflow_polish.js", "workflow_research.js", "bugfix_ui.js", "profile_ui.js", "profile_compat.js", "final_workflow_fix.js", "profile_switcher.js", "image_profile_ui.js", "profile_research_sync.js", "final_fixes.js", "stability_1_3_1.js"]
+    scripts = ["full_ui.js", "ui_polish.js", "workflow_polish.js", "workflow_research.js", "bugfix_ui.js", "profile_ui.js", "profile_compat.js", "final_workflow_fix.js", "profile_switcher.js", "image_profile_ui.js", "profile_research_sync.js", "final_fixes.js", "stability_1_3_1.js", "profile_analyzer_fix.js"]
     payload = '<script>window.current=window.current||"overview";</script>' + "".join((DASHBOARD_DIR / name).read_text(encoding="utf-8") for name in scripts)
     html = html.replace("</body>", payload + "</body>", 1)
     if not account_exists:
