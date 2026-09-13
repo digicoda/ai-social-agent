@@ -32,7 +32,7 @@ def test_latest_release_parses_github_release(monkeypatch):
     assert result["tag"] == "v1.3.1"
 
 
-def test_version_payload_reports_update(monkeypatch):
+def test_version_payload_reports_up_to_date_when_latest_matches(monkeypatch):
     monkeypatch.setattr(
         "app.version.latest_release",
         lambda **kwargs: {
@@ -50,8 +50,8 @@ def test_version_payload_reports_update(monkeypatch):
 
     assert result["version"] == APP_VERSION
     assert result["latest_version"] == "1.3.1"
-    assert result["update_available"] is True
-    assert result["status"] == "Update available."
+    assert result["update_available"] is False
+    assert result["status"] == "Up to date."
 
 
 def test_installer_version_matches_application_version():
