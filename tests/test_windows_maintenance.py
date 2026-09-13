@@ -8,7 +8,12 @@ ROOT = Path(__file__).parents[1]
 
 
 def test_uninstall_endpoint_exists():
-    assert any(route.path == "/system/uninstall" for route in main.app.routes)
+    routes = []
+    for route in main.app.routes:
+        routes.append(getattr(route, "path", ""))
+        for nested in getattr(getattr(route, "routes", None), "__iter__", lambda: iter(()))():
+            routes.append(getattr(nested, "path", ""))
+    assert "/system/uninstall" in routes
 
 
 def test_uninstall_helper_and_installer_payload_exist():
@@ -25,3 +30,9 @@ def test_update_workflow_publishes_current_release():
     assert "publish-v1-3-1:" in workflow
     assert "gh release create v1.3.1" in workflow
     assert "gh release upload v1.3.1" in workflow
+
+
+def test_profile_analyzer_fix_is_loaded():
+    dashboard = (ROOT / "app" / "dashboard.py").read_text(encoding="utf-8")
+    assert "profile_analyzer_fix.js" in dashboard
+    assert (ROOT / "app" / "dashboard" / "profile_analyzer_fix.js").exists()
