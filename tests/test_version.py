@@ -17,9 +17,9 @@ def test_latest_release_parses_github_release(monkeypatch):
 
         def json(self):
             return {
-                "tag_name": "v1.3.1",
-                "name": "AI Social Agent v1.3.1",
-                "html_url": "https://github.com/digicoda/ai-social-agent/releases/tag/v1.3.1",
+                "tag_name": "v1.3.2",
+                "name": "AI Social Agent v1.3.2",
+                "html_url": "https://github.com/digicoda/ai-social-agent/releases/tag/v1.3.2",
                 "published_at": "2026-09-13T00:00:00Z",
                 "body": "Release notes",
             }
@@ -28,8 +28,8 @@ def test_latest_release_parses_github_release(monkeypatch):
     result = latest_release()
 
     assert result["ok"] is True
-    assert result["version"] == "1.3.1"
-    assert result["tag"] == "v1.3.1"
+    assert result["version"] == "1.3.2"
+    assert result["tag"] == "v1.3.2"
 
 
 def test_version_payload_reports_up_to_date_when_latest_matches(monkeypatch):
@@ -37,10 +37,10 @@ def test_version_payload_reports_up_to_date_when_latest_matches(monkeypatch):
         "app.version.latest_release",
         lambda **kwargs: {
             "ok": True,
-            "version": "1.3.1",
-            "tag": "v1.3.1",
-            "name": "AI Social Agent v1.3.1",
-            "url": "https://github.com/digicoda/ai-social-agent/releases/tag/v1.3.1",
+            "version": APP_VERSION,
+            "tag": f"v{APP_VERSION}",
+            "name": f"AI Social Agent v{APP_VERSION}",
+            "url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
             "published_at": "2026-09-13T00:00:00Z",
             "body": "Release notes",
             "checked_at": "2026-09-13T00:00:00+00:00",
@@ -49,7 +49,7 @@ def test_version_payload_reports_up_to_date_when_latest_matches(monkeypatch):
     result = version_payload()
 
     assert result["version"] == APP_VERSION
-    assert result["latest_version"] == "1.3.1"
+    assert result["latest_version"] == APP_VERSION
     assert result["update_available"] is False
     assert result["status"] == "Up to date."
 
