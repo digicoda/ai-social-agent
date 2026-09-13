@@ -71,22 +71,16 @@ def test_fastapi_version_uses_application_version():
 
 def test_version_endpoint_returns_runtime_metadata(monkeypatch):
     monkeypatch.setattr(
-        main,
-        "version_payload",
+        "app.version.latest_release",
         lambda **kwargs: {
-            "name": "AI Social Agent",
+            "ok": True,
             "version": APP_VERSION,
-            "release": f"v{APP_VERSION}",
-            "platform": "server",
-            "latest_version": APP_VERSION,
-            "latest_release": f"AI Social Agent v{APP_VERSION}",
-            "latest_release_url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
+            "tag": f"v{APP_VERSION}",
+            "name": f"AI Social Agent v{APP_VERSION}",
+            "url": f"https://github.com/digicoda/ai-social-agent/releases/tag/v{APP_VERSION}",
             "published_at": "2026-09-13T00:00:00Z",
-            "update_available": False,
-            "status": "Up to date.",
-            "features": [],
+            "body": "Release notes",
             "checked_at": "2026-09-13T00:00:00+00:00",
-            "error": None,
         },
     )
     client = TestClient(main.app)
