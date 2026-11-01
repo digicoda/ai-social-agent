@@ -84,12 +84,15 @@ These capabilities should be designed and validated before the project is market
 
 ## Stage 6 — Distribution and release maturity
 
+- Publish the Community Edition under Apache License 2.0 after code and dependency provenance review.
+- Finalize a transparent CLA and verification workflow before relying on commercial relicensing of external contributions.
+- Keep Community Core public and build a future paid Enterprise Edition through separately maintained modules and services.
+- Version public extension contracts and publish Community / Enterprise compatibility information.
 - Improve installation, upgrades, and configuration validation.
 - Publish versioned release notes and compatibility information.
 - Add reproducible release checks and artifact integrity verification.
 - Improve documentation, examples, and support guidance.
 - Define a clear license and contribution governance model.
-
 ## Guiding principles
 
 1. **Quality before volume:** relevant research and useful content matter more than producing many results.
