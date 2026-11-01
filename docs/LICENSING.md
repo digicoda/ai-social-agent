@@ -2,7 +2,7 @@
 
 ## Current community license
 
-The proposed community license for this repository is the standard **Apache License 2.0**. The root `LICENSE` file is the authoritative license text.
+The Community Edition in this repository is licensed under the standard **Apache License 2.0**. The root `LICENSE` file is the authoritative license text.
 
 Apache-2.0 permits commercial use, modification, redistribution, and closed-source combinations, subject to its conditions. It includes an express, limited patent license from each contributor. It does **not** require downstream users to publish or send their modifications back to this repository.
 
