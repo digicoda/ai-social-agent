@@ -255,7 +255,11 @@ Please do not publish credentials, tokens, private data, or exploitable security
 
 ## License
 
-No license file is currently included in this repository. Until the project owner adds and confirms a license, do not assume that the source code is available for unrestricted reuse, redistribution, or commercial use. A license decision is required to establish clear open-source reuse terms.
+The Community Edition is proposed to be released under the **Apache License 2.0**. See the root [LICENSE](LICENSE) file for the complete terms.
+
+The project is preparing an open-core model: a free Community Edition and a future paid Enterprise Edition built around separately maintained enterprise modules and services. Apache-2.0 does not require downstream users to publish private modifications or contribute them back.
+
+A Contributor License Agreement is still a legal-review draft and is **not active**. Do not treat [the CLA draft](docs/legal/CLA-DRAFT.md) as an agreement to sign. See [Licensing and Community / Enterprise Model](docs/LICENSING.md) for the intended model, limits, and release checklist.
 
 ## Project direction
 
