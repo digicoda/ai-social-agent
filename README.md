@@ -1,94 +1,128 @@
 # AI Social Agent
 
-Automated technical-content research, AI analysis, content generation, approval, scheduling, and social publishing system designed for lightweight deployment.
+**Research → Insight → Content → Approval → Schedule → Publish**
 
-## Current implementation status
+AI Social Agent is an open-source project in active development that aims to turn useful signals from the web into researched, platform-ready social content—with configurable AI providers, human review, automation profiles, and controlled publishing.
 
-Tasks 1–9 are implemented on `main`. Task 10 (final Windows installer/release work) is intentionally the next stage.
+The goal is not just another AI caption generator. The long-term direction is a dependable, extensible social-content operations platform: discover relevant topics, understand why they matter, create useful content grounded in research, keep people in control, and publish through a traceable workflow.
 
-### Task 1 — Multi-source Research
+> **Project status: Active development / not yet enterprise-ready.** The core workflow and integrations exist, but research relevance/coverage and research-to-content generation still need quality, reliability, and end-to-end validation. Do not treat the current build as a production guarantee.
 
-- Web Search is a first-class research source.
-- GitHub Issues, Reddit, Stack Overflow, and RSS/News remain supported and query-aware.
-- Source selection, category/intent filters, time range, research depth, relevance/opportunity/trend scoring, and cross-source deduplication are supported.
-- Structured API errors are normalized for safe dashboard rendering.
+[Repository](https://github.com/digicoda/ai-social-agent) · [Report a bug](https://github.com/digicoda/ai-social-agent/issues/new?template=bug_report.md) · [Request a feature](https://github.com/digicoda/ai-social-agent/issues/new?template=feature_request.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
-### Task 2 — Research → Content
+---
 
-- Research results persist into the problems store used by AI analysis.
-- Targeted Create Content can analyze an item when needed and then generate a draft.
-- Content generation supports both current `ai_intelligence` and legacy `problem_analyses` data.
-- Duplicate non-rejected drafts are avoided.
+## Why this project exists
 
-### Task 3 — Incremental AI Analyzer
+Teams and independent creators need more than high-volume generated posts. They need a repeatable process to:
 
-- Already analyzed research is skipped on subsequent runs.
-- Only new/unanalyzed research is sent to the AI provider.
-- Existing intelligence and clusters are retained rather than rebuilt on every run.
-- New research receives structured category, intent, sentiment, severity, trend, opportunity, and content-gap analysis.
-- Near-duplicate research can reuse an existing analysis without another AI call.
+1. Find relevant conversations, questions, problems, trends, and opportunities.
+2. Separate useful signals from noise, duplicates, and low-quality results.
+3. Analyze findings and understand the audience/context.
+4. Turn selected research into useful drafts for the right platform.
+5. Review, edit, approve, reject, and audit content.
+6. Schedule and publish approved content.
+7. Learn from workflow and publishing history, then improve the process.
 
-### Task 4 — Multi-profile Architecture
+That end-to-end workflow remains the project's central idea and product direction.
 
-- Profiles are persisted in a master `automation_profiles` store.
-- Each profile can use an isolated SQLite database under `data/profiles/`.
-- Active profile context overlays profile database and AI provider/model settings.
-- The default/shared database remains available when no profile is selected.
-- The dashboard includes profile switching and profile management.
+## Current status
 
-### Task 5 — Manual vs Automatic Mode
+The repository contains working foundations for the following areas. Feature presence in code and automated tests does **not** mean every source, provider, environment, or end-to-end user path has been fully validated.
 
-- Each profile supports Manual or Automatic mode.
-- Automatic profiles have a persisted daily run time and timezone-aware `next_run`.
-- Manual profiles are not worker-due but can be run explicitly with Run now.
-- Automation can be enabled/disabled without losing the saved profile pipeline configuration.
-- Profile UI exposes mode, enabled state, approval mode, schedule, timezone, and publishing controls.
+| Area | Current position |
+|---|---|
+| Multi-source research | Implemented foundation; relevance, source coverage, ranking, consistency, and result quality need further improvement and validation |
+| Research-to-content | Integration exists; reliability, context hand-off, output quality, and failure handling are active improvement priorities |
+| AI analysis | Incremental analysis and structured classification are implemented; quality depends on input data and provider responses |
+| AI providers | Gemini, OpenAI, and Hugging Face provider support exists in the provider layer; validate each provider/model with real credentials |
+| Profiles and automation | Persistent profiles, manual/automatic modes, and pipeline execution are implemented |
+| Approval | Human approval, rejection reasons, and approval history are implemented |
+| Scheduling and publishing | Worker-based scheduling and LinkedIn publishing paths are implemented; provider/API changes and real-account behavior require validation |
+| Deployment | Docker Compose and Windows packaging workflows exist; deployment hardening and operational validation remain part of the roadmap |
+| Enterprise readiness | Not yet complete; see [Roadmap](ROADMAP.md) |
 
-### Task 6 — Automatic End-to-End Pipeline
+### Known improvement priorities
 
-Automatic profile execution follows:
+- Improve research relevance, precision, recall, source diversity, deduplication, ranking, and explainability.
+- Make search behavior predictable: clear filters, source status, useful empty states, partial-failure reporting, and actionable errors.
+- Make research-to-content generation dependable: preserve source context, handle missing/weak analysis, prevent unsupported claims, and explain provider failures.
+- Improve generated content quality, platform-specific formatting, repeatability, and user control.
+- Expand automated tests from component-level coverage to realistic end-to-end scenarios.
+- Strengthen observability, security, deployment, and data-management capabilities before describing the product as enterprise-ready.
 
-`Research → AI Analysis → Content → Approval → Scheduling → Publishing worker`
+See [ROADMAP.md](ROADMAP.md) for the staged plan.
 
-- Profile categories, resources, query, time range, and research limit drive the research stage.
-- Analysis is scoped to the research cycle.
-- Content generation is scoped to current research problems and prioritizes opportunity.
-- Human approval leaves drafts pending until an explicit decision.
-- Auto approval is applied only when the profile is configured for it.
-- Scheduling occurs only for approved drafts and only when auto-publish is enabled.
-- Actual publishing remains delegated to the existing worker.
-- Pipeline stage/run status is persisted for observability.
+## Core workflow
 
-### Task 7 — Approval System
+```text
+Profile / User Request
+        |
+        v
+Research Sources
+        |
+        v
+Normalize → Deduplicate → Filter → Rank
+        |
+        v
+Persist Research
+        |
+        v
+AI Analysis / Insights
+        |
+        v
+Generate Platform-aware Drafts
+        |
+        v
+Human Review & Approval
+        |
+        v
+Schedule
+        |
+        v
+Publishing Worker
+        |
+        v
+Publishing History / Audit
+```
 
-- Human approval cannot be bypassed.
-- Rejection requires a reason.
-- Approval/rejection transitions and audit records are atomic.
-- Terminal drafts cannot be approved or rejected again through the decision path.
-- Direct publishing requires an approved draft.
-- Approval history is persisted in SQLite.
+Human approval is intended to remain a first-class control. Automatic approval is an explicit profile configuration, not an assumption that every generated draft should be published.
 
-### Task 8 — Scheduling & Publishing
+## Current capabilities
 
-- Only approved drafts can be scheduled.
-- Schedule times require a future ISO-8601 timestamp and are normalized to UTC.
-- Active duplicate schedules for a draft/provider are blocked.
-- Scheduled/retrying jobs can be safely rescheduled while preserving provider/media settings.
-- Rescheduling clears stale retry errors.
-- Cancellation, retries, idempotency, media-aware scheduling, and the existing publisher worker remain supported.
-- LinkedIn text, image, document, video, and MultiImage publishing are supported.
+### Research
 
-### Task 9 — Full Regression & Cross-Environment Testing
+The research layer includes integrations for web search, GitHub Issues, Reddit, Stack Overflow, and RSS/news sources. The implementation includes source selection, query-aware collection, filters, normalization, deduplication, scoring, and structured error handling.
 
-- Python 3.11 and 3.12 regression suites run in CI.
-- Source compilation is checked before tests.
-- Docker build/smoke validation and Compose configuration validation are retained.
-- Windows CI validates Python tests, icon generation, installer build, and installer payload.
-- Critical runtime modules and workflow files have regression presence guards.
+**Important:** the existence of these integrations does not mean every query returns comprehensive or high-quality results. Improving research quality and reliability is a current priority.
 
-## Dashboard
+### AI analysis and content
 
-The dashboard is a compact desktop-first workspace with:
+Research can be persisted and passed into the analysis and content workflows. The application includes incremental analysis behavior and targeted content-generation paths, with compatibility for existing analysis data.
+
+The intended output is useful, evidence-aware content—not generic text detached from the research. Better context handling, generation consistency, quality evaluation, and transparent failure states are active development priorities.
+
+### Profiles and automation
+
+- Multiple persisted automation profiles.
+- Profile-specific configuration and data isolation using SQLite databases.
+- Manual execution and configured automatic runs.
+- Timezone-aware schedules and explicit Run now behavior.
+- Pipeline status persistence.
+
+### Review, scheduling, and publishing
+
+- Draft approval and rejection with a reason.
+- Approval history and audit records.
+- Approved-only scheduling and publishing guards.
+- Worker-based execution, retry handling, and idempotency protections.
+- LinkedIn publishing paths for text, images, documents, video, and multi-image posts.
+
+Publishing integrations depend on valid provider credentials, API permissions, and current third-party platform requirements. Test with a controlled account before enabling automation.
+
+### Dashboard
+
+The dashboard currently includes:
 
 1. Overview
 2. Research
@@ -99,72 +133,79 @@ The dashboard is a compact desktop-first workspace with:
 7. Integrations
 8. Settings
 
-AI providers and social integrations are separated. Provider configuration dynamically supports Gemini, OpenAI, and Hugging Face model discovery where provider credentials are available. Research state, filters, source coverage, ranking, workflow guidance, profile selection, approval, calendar, analytics, and publishing history are integrated into the dashboard.
+## Technology and architecture
 
-## AI providers
+The current implementation is Python-based and uses a lightweight application architecture with SQLite persistence, an API/dashboard, background worker execution, and Docker deployment support.
 
-The provider layer supports Gemini, OpenAI, and Hugging Face through lightweight HTTP REST clients. Provider/model configuration is stored through the system settings and profile configuration layers; credentials remain runtime configuration and are not committed to the repository.
+The project intentionally avoids requiring a large infrastructure stack for the initial deployment. SQLite is currently intended for a single application/worker deployment; horizontal scaling against the same SQLite database is not supported. A production-grade shared database and related migration work are future architecture priorities.
 
-## LinkedIn publishing
+## AI providers and configuration
 
-The publishing layer supports:
+The provider layer includes support for Gemini, OpenAI, and Hugging Face. Actual model availability and behavior depend on provider credentials, selected models, API access, and provider-side changes.
 
-- Text posts
-- Single-image posts
-- Documents: PDF, DOC, DOCX, PPT, PPTX
-- Native video upload lifecycle
-- Native MultiImage posts with 2–20 images
+Start with the example environment file:
 
-Publishing retains approved-only guards, atomic publish claims, audit records, retry classification, and idempotency protection.
-
-## Configuration
-
-Typical runtime settings include:
-
-```text
-APP_ENV=development
-DATABASE_URL=sqlite:///./data/agent.db
-INTERNAL_API_KEY=
-GEMINI_API_KEY=
-OPENAI_API_KEY=
-HUGGINGFACE_API_KEY=
-LINKEDIN_ACCESS_TOKEN=
-LINKEDIN_AUTHOR_URN=urn:li:person:<id>
-LINKEDIN_API_VERSION=202608
-PUBLISHING_TIMEOUT_SECONDS=20
-LINKEDIN_MEDIA_POLL_ATTEMPTS=10
-LINKEDIN_MEDIA_POLL_SECONDS=1
-RETRY_BASE_SECONDS=60
-RETRY_MAX_SECONDS=3600
-WORKER_BATCH_SIZE=10
-WORKER_POLL_SECONDS=60
+```bash
+cp .env.example .env
 ```
 
-Never commit real credentials.
+Configure only the credentials required for the providers and integrations you intend to test. Never commit real API keys, access tokens, passwords, session secrets, or production configuration.
+
+Common settings include:
+
+- `GEMINI_API_KEY`
+- `OPENAI_API_KEY`
+- `HUGGINGFACE_API_KEY`
+- `LINKEDIN_ACCESS_TOKEN`
+- `LINKEDIN_AUTHOR_URN`
+- `INTERNAL_API_KEY`
+- `ADMIN_PASSWORD`
+- `SESSION_SECRET`
+
+Refer to [`.env.example`](.env.example) for the current variable list. Keep secrets in environment variables or a deployment secret manager.
 
 ## Run locally
 
+The following is the current CLI-oriented development path. Exact setup requirements may evolve as the project is improved.
+
 ```bash
 python -m venv .venv
+
+# Linux/macOS
 source .venv/bin/activate
+
+# Windows PowerShell
+# .venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 cp .env.example .env
+```
 
+Run the available workflow commands:
+
+```bash
 python -m app.cli research
 python -m app.cli analyze --limit 25
 python -m app.cli generate --limit 10
 python -m app.cli queue --limit 25
+```
+
+Approval and publishing commands can affect connected social accounts. Review the configuration and draft before running them:
+
+```bash
 python -m app.cli approve --draft-id 1
 python -m app.cli publish --draft-id 1 --provider linkedin
 ```
 
-## Production deployment
+Do not run publishing commands against a real account until credentials, permissions, approval behavior, and the target content have been checked.
 
-The supplied Docker Compose deployment runs an API service and a continuous worker service using persistent SQLite and media volumes.
+## Docker deployment
+
+A Docker Compose configuration is provided for the API and worker:
 
 ```bash
 cp .env.example .env
-# Configure production credentials/secrets in .env or your deployment secret store.
+# Add deployment credentials to .env or your secret manager.
 docker compose build
 docker compose up -d
 docker compose ps
@@ -172,84 +213,52 @@ docker compose logs -f api
 docker compose logs -f worker
 ```
 
-The API exposes port `8000` and provides `/health` and `/ready`. The worker uses `python -m app.cli worker --loop`, polls according to `WORKER_POLL_SECONDS`, and handles graceful SIGTERM/SIGINT shutdown.
+The API uses port `8000` and exposes `/health` and `/ready`. The worker runs separately and shares persistent application data and media storage with the API through the supplied Compose configuration.
 
-Scheduled media must be accessible to both API and worker containers. The supplied Compose configuration shares `/app/media` between them.
+Before production use, review authentication, secret management, backups, storage permissions, logging, monitoring, network exposure, and recovery procedures. The current SQLite deployment is for a single application/worker deployment, not horizontal scaling.
 
-SQLite is intentionally kept for a single application/worker deployment. Horizontal scaling against the same SQLite database is not supported; a future PostgreSQL migration can remove that limitation.
+## API overview
 
-## API surface
+The current API includes endpoints for:
 
-```text
-GET  /health
-GET  /ready
-POST /research/run
-POST /analysis/run?limit=25
-POST /content/generate?limit=10
-GET  /approval/queue?status=pending_approval&limit=25
-POST /approval/{draft_id}
-GET  /approval/{draft_id}/history
-POST /publish/{draft_id}?provider=linkedin
-POST /publish/{draft_id}/image
-POST /publish/{draft_id}/multi-image
-POST /publish/{draft_id}/document
-POST /publish/{draft_id}/video
-POST /schedule/{draft_id}
-POST /schedule/{schedule_id}/reschedule
-GET  /schedules?status=scheduled&limit=50
-DELETE /schedule/{schedule_id}
-POST /worker/run?limit=10
-GET  /publishing/history?provider=linkedin&limit=50
-GET  /publishing/stats
-GET  /profiles
-POST /profiles
-PUT  /profiles/{profile_id}
-DELETE /profiles/{profile_id}
-POST /profiles/{profile_id}/run
-POST /profiles/{profile_id}/enable
-POST /profiles/{profile_id}/disable
+- Health and readiness
+- Research and AI analysis
+- Content generation
+- Approval queue and approval history
+- Publishing and media publishing
+- Scheduling, rescheduling, and cancellation
+- Publishing history and statistics
+- Automation profile management and execution
+
+When `INTERNAL_API_KEY` is configured, protected mutation/operational endpoints require the `X-API-Key` header. Check the current application routes and configuration before integrating against the API; endpoint contracts may evolve during active development.
+
+## Testing
+
+The repository includes automated tests and GitHub Actions workflows for Python validation, Docker/Compose checks, and Windows packaging. Run the test suite locally before submitting changes:
+
+```bash
+python -m compileall -q app
+python -m pytest -q
 ```
 
-When `INTERNAL_API_KEY` is configured, protected mutation/operational endpoints require the `X-API-Key` header. `/health` remains public.
+A passing test suite is necessary but not sufficient for production readiness. Research and generation changes should also be checked against representative real-world queries, provider failures, empty/partial source responses, and complete research-to-draft workflows.
 
-## Architecture
+## Contributing
 
-```text
-Configured Profile
-       |
-       v
-Research Sources -> Normalize -> Dedup -> SQLite -> Score
-                                               |
-                                               v
-                                         Incremental AI Analysis
-                                               |
-                                               v
-                                         Content Drafts
-                                               |
-                                               v
-                                         Approval Queue
-                                               |
-                                  +------------+------------+
-                                  |                         |
-                             Human Approval           Auto Approval
-                                  |                         |
-                                  +------------+------------+
-                                               |
-                                      Approved Draft
-                                               |
-                                      +--------+--------+
-                                      |                 |
-                                  Immediate          Schedule
-                                      |                 |
-                                      +--------+--------+
-                                               |
-                                            Worker
-                                               |
-                                          Publisher
-                                               |
-                                         Social API
-                                               |
-                                      Attempts / History
-```
+Contributions are welcome, especially around research quality, generation reliability, testing, documentation, and operational hardening.
 
-The project intentionally uses lightweight dependencies and avoids Redis, Elasticsearch, Temporal, and other heavy infrastructure.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. For larger changes, open an issue first so the approach can be discussed before implementation.
+
+## Security
+
+Please do not publish credentials, tokens, private data, or exploitable security details in public issues. See [SECURITY.md](SECURITY.md) for responsible reporting guidance.
+
+## License
+
+No license file is currently included in this repository. Until the project owner adds and confirms a license, do not assume that the source code is available for unrestricted reuse, redistribution, or commercial use. A license decision is required to establish clear open-source reuse terms.
+
+## Project direction
+
+The product vision is unchanged: build a dependable AI-assisted social content workflow that connects research, analysis, content creation, human control, automation, scheduling, and publishing.
+
+The immediate focus is to make research and content generation trustworthy and testable. Enterprise capabilities—such as stronger multi-user access controls, scalable persistence, deeper observability, operational resilience, and broader integration coverage—should be delivered in deliberate stages rather than claimed prematurely.
