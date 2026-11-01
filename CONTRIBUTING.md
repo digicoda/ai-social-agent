@@ -77,7 +77,7 @@ New features should support this workflow, improve its quality/reliability, or p
 
 ## License and contributor agreement status
 
-The Community Edition is proposed to use Apache License 2.0; see the repository root `LICENSE` and [licensing strategy](docs/LICENSING.md).
+The Community Edition uses Apache License 2.0; see the repository root `LICENSE` and [licensing strategy](docs/LICENSING.md).
 
 The project's CLA is currently a **draft pending legal review**. It is not active and must not be signed or treated as binding. Until a final CLA is approved, published, and a transparent acceptance process is configured, maintainers must not claim that a contribution is covered by commercial relicensing rights. Contributions intentionally submitted for inclusion after Apache-2.0 adoption are subject to the Apache-2.0 terms, unless a separate valid written agreement applies.
 
