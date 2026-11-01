@@ -8,7 +8,7 @@ The goal is not just another AI caption generator. The long-term direction is a 
 
 > **Project status: Active development / not yet enterprise-ready.** The core workflow and integrations exist, but research relevance/coverage and research-to-content generation still need quality, reliability, and end-to-end validation. Do not treat the current build as a production guarantee.
 
-[Repository](https://github.com/digicoda/ai-social-agent) · [Report a bug](https://github.com/digicoda/ai-social-agent/issues/new?template=bug_report.md) · [Request a feature](https://github.com/digicoda/ai-social-agent/issues/new?template=feature_request.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
+[Repository](https://github.com/digicoda/ai-social-agent) · [Report a bug](https://github.com/digicoda/ai-social-agent/issues/new?template=bug_report.md) · [Request a feature](https://github.com/digicoda/ai-social-agent/issues/new?template=feature_request.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md) · [Licensing](docs/LICENSING.md) · [Community / Enterprise Architecture](docs/COMMUNITY-ENTERPRISE-ARCHITECTURE.md)
 
 ---
 
