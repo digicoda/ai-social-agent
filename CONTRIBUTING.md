@@ -73,3 +73,14 @@ The long-term direction remains an end-to-end AI social content operations workf
 `Research → Analysis → Content → Human Approval → Scheduling → Publishing → History`
 
 New features should support this workflow, improve its quality/reliability, or provide a clear foundation for future scale and enterprise readiness.
+
+
+## License and contributor agreement status
+
+The Community Edition is proposed to use Apache License 2.0; see the repository root `LICENSE` and [licensing strategy](docs/LICENSING.md).
+
+The project's CLA is currently a **draft pending legal review**. It is not active and must not be signed or treated as binding. Until a final CLA is approved, published, and a transparent acceptance process is configured, maintainers must not claim that a contribution is covered by commercial relicensing rights. Contributions intentionally submitted for inclusion after Apache-2.0 adoption are subject to the Apache-2.0 terms, unless a separate valid written agreement applies.
+
+Before the project activates a final CLA, it will publish the complete terms, explain the rights granted (including any commercial relicensing rights), and configure a verifiable GitHub signing/check process. Contributors must have authority to submit their work; contributions owned by an employer or client may require that organization's authorization.
+
+A CLA does not require users of the software to send private downstream modifications back to this repository. It only covers Contributions actually submitted to the Project and within the scope of the signed agreement.
