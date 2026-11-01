@@ -255,7 +255,7 @@ Please do not publish credentials, tokens, private data, or exploitable security
 
 ## License
 
-The Community Edition is proposed to be released under the **Apache License 2.0**. See the root [LICENSE](LICENSE) file for the complete terms.
+The Community Edition is released under the **Apache License 2.0**. See the root [LICENSE](LICENSE) file for the complete terms.
 
 The project is preparing an open-core model: a free Community Edition and a future paid Enterprise Edition built around separately maintained enterprise modules and services. Apache-2.0 does not require downstream users to publish private modifications or contribute them back.
 
